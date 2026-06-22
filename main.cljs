@@ -21,7 +21,15 @@
                    (not (converted? el)))
             (do
               (js/console.log "convert-finished-freedraw: converting element" el)
-              (let [points (.-points el)
+              (let [raw-points (.-points el)
+                    bg-color (.-backgroundColor el)
+                    filled? (and bg-color (not= bg-color "transparent"))
+                    points (if (and filled? (> (.-length raw-points) 0))
+                             (let [pts (.slice raw-points)
+                                   first-pt (aget pts 0)]
+                               (.push pts first-pt)
+                               pts)
+                             raw-points)
                     skeleton #js {:type "line"
                                   :x (.-x el)
                                   :y (.-y el)
@@ -33,6 +41,10 @@
                                   :frameId (.-frameId el)
                                   :groupIds (.-groupIds el)
                                   :customData #js {:converted true}}
+                    _ (when filled?
+                        (aset skeleton "polygon" true)
+                        (aset skeleton "backgroundColor" bg-color)
+                        (aset skeleton "fillStyle" (or (.-fillStyle el) "solid")))
                     converted (.convertToExcalidrawElements js/ExcalidrawLib #js [skeleton])
                     new-line (aget converted 0)]
                 (.push next-elements new-line)))

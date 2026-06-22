@@ -53,6 +53,20 @@
         (.updateScene api #js {:elements next-elements}))
       (js/console.log "convert-finished-freedraw: no pending freedraw elements found"))))
 
+(defn set-thickness [api new-thickness]
+  (let [app-state (.getAppState api)
+        selected-ids (.-selectedElementIds app-state)
+        elements (.getSceneElements api)
+        next-elements (js/Array.)]
+    (doseq [el elements]
+      (if (aget selected-ids (.-id el))
+        (let [new-el (js/Object.assign #js {} el #js {:strokeWidth new-thickness
+                                                      :version (inc (.-version el))})]
+          (.push next-elements new-el))
+        (.push next-elements el)))
+    (.updateScene api #js {:elements next-elements
+                           :appState #js {:currentItemStrokeWidth new-thickness}})))
+
 (defn simplify-selected-lines [api]
   (let [app-state (.getAppState api)
         selected-ids (.-selectedElementIds app-state)
@@ -88,7 +102,16 @@
 
 (defn app []
   (fn []
-    [:div {:style {:height "100%" :width "100%"}}
+    [:div {:style {:height "100%" :width "100%" :position "relative"}}
+     [:div {:className "floating-menu"}
+      (for [t [1 3 5 10]]
+        ^{:key t}
+        [:button {:className "thickness-btn"
+                  :title (str "Set thickness to " t)
+                  :on-click #(when-let [api @api-atom]
+                               (set-thickness api t))}
+         [:svg {:width "24" :height "24" :viewBox "0 0 24 24"}
+          [:line {:x1 "4" :y1 "12" :x2 "20" :y2 "12" :stroke "currentColor" :strokeWidth t :strokeLinecap "round"}]]])]
      [:> js/ExcalidrawLib.Excalidraw
       {:excalidrawAPI
        (fn [api]

@@ -35,7 +35,7 @@
                                   :y (.-y el)
                                   :points points
                                   :strokeColor (.-strokeColor el)
-                                  :strokeWidth 2
+                                  :strokeWidth (* 5 (.-strokeWidth el))
                                   :roughness 0
                                   :roundness #js {:type 2}
                                   :frameId (.-frameId el)
@@ -64,6 +64,13 @@
            (when api
              (js/console.log "Excalidraw API initialized")
              (.setActiveTool api #js {:type "freedraw"})
-             (.onPointerUp api (fn [] (convert-finished-freedraw api)))))}]])))
+             (.updateScene api #js {:appState #js {:currentItemStrokeWidth 1}})
+             (.onPointerUp api (fn [] (convert-finished-freedraw api)))))
+         :onChange
+         (fn [elements _app-state _files]
+           (doseq [el elements]
+             (when (and (= (.-type el) "freedraw")
+                        (.-simulatePressure el))
+               (aset el "simulatePressure" false))))}]])))
 
 (rdom/render [app] (.getElementById js/document "app"))

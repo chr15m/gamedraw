@@ -133,11 +133,45 @@
           return editingLineId.get() === shape.id;
         };
 
-        hideResizeHandles = () => true;
+        canResize = (shape) => {
+          return editingLineId.get() !== shape.id;
+        };
+
+        hideResizeHandles = (shape) => {
+          return editingLineId.get() === shape.id;
+        };
+
+        hideRotateHandle = (shape) => {
+          return editingLineId.get() === shape.id;
+        };
 
         onDoubleClick = (shape) => {
           toggleEditingLine(shape.id);
         };
+
+        onResize(shape, info) {
+          if (typeof super.onResize === "function") {
+            const res = super.onResize(shape, info);
+            if (res) return res;
+          }
+          const { scaleX = 1, scaleY = 1, initialShape } = info;
+          if (!initialShape || !initialShape.props || !initialShape.props.points) {
+            return;
+          }
+          const nextPoints = {};
+          for (const [k, pt] of Object.entries(initialShape.props.points)) {
+            nextPoints[k] = {
+              ...pt,
+              x: pt.x * scaleX,
+              y: pt.y * scaleY
+            };
+          }
+          return {
+            props: {
+              points: nextPoints
+            }
+          };
+        }
       }
 
       CustomLineShapeUtil.type = "line";

@@ -27,6 +27,8 @@
 
       const {
         Tldraw,
+        LineShapeUtil,
+        atom,
         DefaultToolbar,
         SelectToolbarItem,
         HandToolbarItem,
@@ -60,6 +62,92 @@
       window.getPointsFromDrawSegment = getPointsFromDrawSegment;
       window.getIndices = getIndices;
       window.sortByIndex = sortByIndex;
+
+      const editingLineId = atom
+        ? atom("editingLineId", null)
+        : {
+            _val: null,
+            get() {
+              return this._val;
+            },
+            set(v) {
+              this._val = v;
+            }
+          };
+
+      let lastToggleTime = 0;
+
+      function setEditingLine(shapeId) {
+        editingLineId.set(shapeId);
+        if (shapeId && window.editor) {
+          const shape = window.editor.getShape(shapeId);
+          if (shape) {
+            window.editor.updateShape({ id: shape.id, type: shape.type });
+          }
+        }
+      }
+
+      function clearEditingLine() {
+        const prevId = editingLineId.get();
+        if (prevId) {
+          editingLineId.set(null);
+          if (window.editor) {
+            const shape = window.editor.getShape(prevId);
+            if (shape) {
+              window.editor.updateShape({ id: shape.id, type: shape.type });
+            }
+          }
+        }
+      }
+
+      function toggleEditingLine(shapeId) {
+        const now = Date.now();
+        if (now - lastToggleTime < 250) {
+          return;
+        }
+        lastToggleTime = now;
+        if (editingLineId.get() === shapeId) {
+          clearEditingLine();
+        } else {
+          setEditingLine(shapeId);
+        }
+      }
+
+      class CustomLineShapeUtil extends LineShapeUtil {
+        static type = "line";
+
+        canEdit = () => false;
+
+        getHandles(shape) {
+          if (editingLineId.get() !== shape.id) {
+            return [];
+          }
+          return super.getHandles(shape);
+        }
+
+        hideSelectionBoundsBg = (shape) => {
+          return editingLineId.get() === shape.id;
+        };
+
+        hideSelectionBoundsFg = (shape) => {
+          return editingLineId.get() === shape.id;
+        };
+
+        hideResizeHandles = () => true;
+
+        onDoubleClick = (shape) => {
+          toggleEditingLine(shape.id);
+        };
+      }
+
+      CustomLineShapeUtil.type = "line";
+      const customShapeUtils = [CustomLineShapeUtil];
+
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && editingLineId.get()) {
+          clearEditingLine();
+        }
+      });
 
       function CustomToolbar(props) {
         return React.createElement(
@@ -206,12 +294,20 @@
 
       root.render(
         React.createElement(Tldraw, {
+          options: {
+            createTextOnCanvasDoubleClick: false
+          },
+          shapeUtils: customShapeUtils,
           components: {
             Toolbar: CustomToolbar,
             StylePanel: CustomStylePanel
           },
           onMount: (editor) => {
             window.editor = editor;
+            const selectIdle = editor.getStateDescendant("select.idle");
+            if (selectIdle) {
+              selectIdle.handleDoubleClickOnCanvas = () => {};
+            }
             editor.setStyleForNextShapes(DefaultDashStyle, "solid");
             editor.setCurrentTool("draw");
             editor.on("event", (info) => {
@@ -221,6 +317,25 @@
                     window.convertFinishedDraw();
                   }
                 }, 0);
+              }
+              if (info.name === "double_click") {
+                const shape =
+                  info.shape ||
+                  (editor.getSelectedShapes().length === 1
+                    ? editor.getSelectedShapes()[0]
+                    : null);
+                if (shape && shape.type === "line") {
+                  toggleEditingLine(shape.id);
+                }
+              }
+            });
+            editor.on("change", () => {
+              const curEditing = editingLineId.get();
+              if (curEditing) {
+                const selected = editor.getOnlySelectedShape();
+                if (!selected || selected.id !== curEditing) {
+                  clearEditingLine();
+                }
               }
             });
             window.dispatchEvent(new CustomEvent("tldraw-ready", { detail: editor }));

@@ -1,0 +1,9 @@
+- [ ] Implement line simplification for tldraw draw shapes (decode and encode b64Vecs with simplify-js)
+- [ ] Integrate custom buttons into native toolbar via uiOverrides (thickness presets, duplicate, simplify)
+- [ ] Hide unnecessary default tools from toolbar (arrows, geo shapes, notes, frames, laser)
+- [ ] Implement constant-width strokes (disable pressure variance for sprite drawing)
+- [ ] Implement stroke and fill order toggle
+- [ ] Implement sprite underlay grid guide starting at (0, 0) with custom dimensions and slot counts
+- [ ] Support custom palette import from hex lists (Lospec format)
+- [ ] Organize pages into projects (project-level grouping or snapshots)
+- [ ] Browse and import reference images from a Pinterest board

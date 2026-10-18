@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <title>Sprite Tool (tldraw)</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <link rel="stylesheet" href="https://esm.sh/tldraw/tldraw.css">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/scittle@latest/dist/scittle.min.js" type="application/javascript"></script>
+    <script src="https://cdn.jsdelivr.net/npm/scittle@latest/dist/scittle.promesa.min.js" type="application/javascript"></script>
+    <script src="https://cdn.jsdelivr.net/npm/simplify-js@1.2.4/simplify.min.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@19.3.1",
+          "react-dom": "https://esm.sh/react-dom@19.3.1",
+          "react-dom/client": "https://esm.sh/react-dom@19.3.1/client"
+        }
+      }
+    </script>
+    <script type="module">
+      import React from "react";
+      import { createRoot } from "react-dom/client";
+      import { Tldraw } from "https://esm.sh/tldraw";
+
+      window.React = React;
+      const container = document.getElementById("app");
+      const root = createRoot(container);
+
+      root.render(
+        React.createElement(Tldraw, {
+          onMount: (editor) => {
+            window.editor = editor;
+            editor.setCurrentTool("draw");
+            window.dispatchEvent(new CustomEvent("tldraw-ready", { detail: editor }));
+          }
+        })
+      );
+    </script>
+    <script type="application/x-scittle" src="main.cljs"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+</html>

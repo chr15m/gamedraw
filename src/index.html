@@ -26,7 +26,11 @@
       import {
         Tldraw,
         DefaultToolbar,
-        DefaultToolbarContent,
+        SelectToolbarItem,
+        HandToolbarItem,
+        DrawToolbarItem,
+        EraserToolbarItem,
+        AssetToolbarItem,
         TldrawUiButton,
         b64Vecs,
         DefaultDashStyle,
@@ -46,7 +50,11 @@
         return React.createElement(
           DefaultToolbar,
           props,
-          React.createElement(DefaultToolbarContent, null),
+          React.createElement(SelectToolbarItem, null),
+          React.createElement(HandToolbarItem, null),
+          React.createElement(DrawToolbarItem, null),
+          React.createElement(EraserToolbarItem, null),
+          React.createElement(AssetToolbarItem, null),
           React.createElement(
             TldrawUiButton,
             {

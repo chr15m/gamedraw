@@ -133,6 +133,7 @@
                       (.push arr (str "a" (inc i))))
                     arr))
         points-map (js/Object.)]
+    (js/console.log "build-line-points: n:" n "indices-sample:" (.slice indices 0 5))
     (dotimes [i n]
       (let [idx (aget indices i)
             p (aget pts i)
@@ -152,41 +153,47 @@
                 geom-pts (when geom
                            (or (.-vertices geom)
                                (.-points geom)))
-                pts (if (and geom-pts (> (.-length geom-pts) 1))
-                      (do
-                        (js/console.log "convert-finished-draw: using geom.vertices, count:"
-                                        (.-length geom-pts)
-                                        "geom class:" (and geom (.. geom -constructor -name)))
-                        geom-pts)
-                      (let [segments (.-segments props)]
-                        (when (and segments (> (.-length segments) 0))
+                segments (.-segments props)
+                raw-pts (when (and segments (> (.-length segments) 0))
                           (let [seg (aget segments 0)
                                 dim (or (.-dim seg) 3)]
                             (if (and b64 (.-path seg))
                               (.decodePoints b64 (.-path seg) dim)
-                              (.-points seg))))))]
-            (when (and pts (> (.-length pts) 1))
-              (let [filtered (filter-min-dist pts 1.5)
-                    points-obj (build-line-points filtered)
-                    line-id (str "shape:line_" (js/Math.random))
-                    draw-size (or (.-size props) "m")
-                    draw-scale (or (.-scale props) 1)
-                    line-scale (* draw-scale (size->line-scale draw-size))
-                    line-shape #js {:id line-id
-                                        :type "line"
-                                        :x (.-x s)
-                                        :y (.-y s)
-                                        :props #js {:color (or (.-color props) "black")
-                                                    :dash (or (.-dash props) "solid")
-                                                    :size draw-size
-                                                    :spline "cubic"
-                                                    :points points-obj
-                                                    :scale line-scale}}]
-                (js/console.log "convert-finished-draw: converted shape to line:"
-                                "pts:" (.-length pts) "->" (.-length filtered)
-                                "line-id:" line-id)
-                (.createShapes editor #js [line-shape])
-                (.deleteShapes editor #js [(.-id s)])))))))))
+                              (.-points seg))))]
+            (js/console.log "convert-finished-draw: geom inspect:"
+                            #js {:class (and geom (.. geom -constructor -name))
+                                 :keys (and geom (js/Object.keys geom))
+                                 :geom-pts-count (and geom-pts (.-length geom-pts))
+                                 :geom-pts-start (and geom-pts (.slice geom-pts 0 4))
+                                 :geom-pts-end (and geom-pts (.slice geom-pts (js/Math.max 0 (- (.-length geom-pts) 4))))
+                                 :raw-pts-count (and raw-pts (.-length raw-pts))
+                                 :raw-pts-start (and raw-pts (.slice raw-pts 0 4))
+                                 :raw-pts-end (and raw-pts (.slice raw-pts (js/Math.max 0 (- (.-length raw-pts) 4))))})
+            (let [pts (if (and geom-pts (> (.-length geom-pts) 1))
+                        geom-pts
+                        raw-pts)]
+              (when (and pts (> (.-length pts) 1))
+                (let [filtered (filter-min-dist pts 1.5)
+                      points-obj (build-line-points filtered)
+                      line-id (str "shape:line_" (js/Math.random))
+                      draw-size (or (.-size props) "m")
+                      draw-scale (or (.-scale props) 1)
+                      line-scale (* draw-scale (size->line-scale draw-size))
+                      line-shape #js {:id line-id
+                                      :type "line"
+                                      :x (.-x s)
+                                      :y (.-y s)
+                                      :props #js {:color (or (.-color props) "black")
+                                                  :dash (or (.-dash props) "solid")
+                                                  :size draw-size
+                                                  :spline "cubic"
+                                                  :points points-obj
+                                                  :scale line-scale}}]
+                  (js/console.log "convert-finished-draw: converted shape to line:"
+                                  "pts:" (.-length pts) "->" (.-length filtered)
+                                  "line-id:" line-id)
+                  (.createShapes editor #js [line-shape])
+                  (.deleteShapes editor #js [(.-id s)]))))))))))
 
 (defn calc-avg-dist [pts]
   (let [n (.-length pts)]
@@ -233,13 +240,54 @@
         res))
     pts))
 
+(defn clamp-max-knot-dist [pts max-dist]
+  (let [n (.-length pts)]
+    (if (< n 2)
+      pts
+      (let [res (js/Array.)
+            p0 (aget pts 0)]
+        (.push res p0)
+        (dotimes [i (dec n)]
+          (let [p1 (aget pts i)
+                p2 (aget pts (inc i))
+                d (pt-dist p1 p2)]
+            (when (> d max-dist)
+              (let [steps (js/Math.ceil (/ d max-dist))]
+                (dotimes [s (dec steps)]
+                  (let [t (/ (inc s) steps)
+                        x (+ (or (.-x p1) 0) (* t (- (or (.-x p2) 0) (or (.-x p1) 0))))
+                        y (+ (or (.-y p1) 0) (* t (- (or (.-y p2) 0) (or (.-y p1) 0))))
+                        z (or (.-z p1) 0.5)]
+                    (.push res #js {:x x :y y :z z})))))
+            (.push res p2)))
+        res))))
+
 (defn size->tolerance [size-str]
   (case size-str
-    "s" 0.01
-    "m" 0.02
-    "l" 0.03
-    "xl" 0.05
-    0.02))
+    "s" 0.25
+    "m" 0.5
+    "l" 0.75
+    "xl" 1.25
+    0.5))
+
+(defn compare-by-index [a b]
+  (if-let [sort-fn (.-sortByIndex js/window)]
+    (sort-fn a b)
+    (let [ia (.-index a)
+          ib (.-index b)]
+      (cond
+        (< ia ib) -1
+        (> ia ib) 1
+        :else 0))))
+
+(defn line-shape->points [s]
+  (let [pts-obj (.. s -props -points)
+        vals (if pts-obj (js/Object.values pts-obj) (js/Array.))
+        sorted (.sort vals compare-by-index)]
+    (js/console.log "line-shape->points: keys count:" (.-length vals)
+                    "indices-sample:" (.map (.slice sorted 0 5) (fn [p] (.-index p)))
+                    "pts-sample:" (.slice sorted 0 3))
+    sorted))
 
 (defn simplify-selected-lines []
   (when-let [editor (get-editor)]
@@ -247,7 +295,26 @@
           selected-shapes (.getSelectedShapes editor)
           updates (js/Array.)]
       (doseq [s selected-shapes]
-        (when (= (.-type s) "draw")
+        (cond
+          (= (.-type s) "line")
+          (let [size-str (or (.. s -props -size) "m")
+                tolerance (size->tolerance size-str)
+                pts (line-shape->points s)]
+            (when (> (.-length pts) 2)
+              (let [simplified (simplify-segment-points pts tolerance)
+                    bounded (clamp-max-knot-dist simplified 24.0)
+                    new-pts-obj (build-line-points bounded)
+                    new-props (js/Object.assign #js {} (.-props s)
+                                                #js {:points new-pts-obj})]
+                (js/console.log "simplify-selected-lines (line):"
+                                (.-length pts) "->" (.-length simplified)
+                                "bounded:" (.-length bounded)
+                                "tolerance:" tolerance)
+                (.push updates #js {:id (.-id s)
+                                    :type (.-type s)
+                                    :props new-props}))))
+
+          (= (.-type s) "draw")
           (let [size-str (or (.. s -props -size) "m")
                 tolerance (size->tolerance size-str)
                 segments (.. s -props -segments)

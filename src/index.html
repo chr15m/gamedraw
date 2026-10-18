@@ -31,7 +31,8 @@
         b64Vecs,
         DefaultDashStyle,
         getPointsFromDrawSegment,
-        getIndices
+        getIndices,
+        sortByIndex
       } from "https://esm.sh/tldraw";
 
       window.React = React;
@@ -39,6 +40,7 @@
       window.DefaultDashStyle = DefaultDashStyle;
       window.getPointsFromDrawSegment = getPointsFromDrawSegment;
       window.getIndices = getIndices;
+      window.sortByIndex = sortByIndex;
 
       function CustomToolbar(props) {
         return React.createElement(

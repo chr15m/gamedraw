@@ -23,25 +23,40 @@
     <script type="module">
       import React from "react";
       import { createRoot } from "react-dom/client";
-      import {
+      import * as tldraw from "https://esm.sh/tldraw";
+
+      const {
         Tldraw,
         DefaultToolbar,
         SelectToolbarItem,
         HandToolbarItem,
         DrawToolbarItem,
         EraserToolbarItem,
+        LineToolbarItem,
         AssetToolbarItem,
         TldrawUiButton,
         b64Vecs,
         DefaultDashStyle,
+        DefaultFillStyle,
+        DefaultSizeStyle,
         getPointsFromDrawSegment,
         getIndices,
-        sortByIndex
-      } from "https://esm.sh/tldraw";
+        sortByIndex,
+        DefaultStylePanel,
+        StylePanelSection,
+        StylePanelColorPicker,
+        StylePanelSizePicker,
+        StylePanelButtonPicker,
+        StylePanelButtonPickerInline,
+        TldrawUiToolbar,
+        useStylePanelContext
+      } = tldraw;
 
       window.React = React;
       window.b64Vecs = b64Vecs;
       window.DefaultDashStyle = DefaultDashStyle;
+      window.DefaultFillStyle = DefaultFillStyle;
+      window.DefaultSizeStyle = DefaultSizeStyle;
       window.getPointsFromDrawSegment = getPointsFromDrawSegment;
       window.getIndices = getIndices;
       window.sortByIndex = sortByIndex;
@@ -54,6 +69,7 @@
           React.createElement(HandToolbarItem, null),
           React.createElement(DrawToolbarItem, null),
           React.createElement(EraserToolbarItem, null),
+          React.createElement(LineToolbarItem, null),
           React.createElement(AssetToolbarItem, null),
           React.createElement(
             TldrawUiButton,
@@ -87,13 +103,112 @@
         );
       }
 
+      function CustomFillPicker() {
+        const context = useStylePanelContext ? useStylePanelContext() : null;
+        if (!context) return null;
+        const { styles, onValueChange } = context;
+        const fill = styles.get(DefaultFillStyle);
+        if (fill === undefined) return null;
+
+        const items = [
+          { value: "none", icon: "fill-none", title: "Fill None" },
+          { value: "solid", icon: "fill-solid", title: "Fill Fill" }
+        ];
+
+        const handleFillChange = (val) => {
+          if (onValueChange) {
+            onValueChange(DefaultFillStyle, val);
+          } else if (window.editor) {
+            window.editor.run(() => {
+              window.editor.setStyleForNextShapes(DefaultFillStyle, val);
+              if (window.editor.getSelectedShapeIds().length > 0) {
+                window.editor.setStyleForSelectedShapes(DefaultFillStyle, val);
+              }
+            });
+          }
+        };
+
+        const currentVal = fill && fill.type === "shared" ? fill.value : null;
+
+        if (StylePanelButtonPicker) {
+          return React.createElement(StylePanelButtonPicker, {
+            title: "Fill",
+            uiType: "fill",
+            style: DefaultFillStyle,
+            items: items,
+            value: fill,
+            onValueChange: (_style, val) => handleFillChange(val)
+          });
+        }
+
+        if (StylePanelButtonPickerInline && TldrawUiToolbar) {
+          return React.createElement(
+            TldrawUiToolbar,
+            { label: "Fill" },
+            React.createElement(StylePanelButtonPickerInline, {
+              title: "Fill",
+              uiType: "fill",
+              style: DefaultFillStyle,
+              items: items,
+              value: fill,
+              onValueChange: (_style, val) => handleFillChange(val)
+            })
+          );
+        }
+
+        return React.createElement(
+          "div",
+          { className: "tlui-buttons__grid", style: { display: "flex", gap: "4px" } },
+          items.map((it) =>
+            React.createElement(
+              TldrawUiButton,
+              {
+                key: it.value,
+                type: "icon",
+                title: it.title,
+                "data-state": currentVal === it.value ? "selected" : undefined,
+                onClick: () => handleFillChange(it.value)
+              },
+              it.title
+            )
+          )
+        );
+      }
+
+      function CustomStylePanel(props) {
+        if (!DefaultStylePanel) return null;
+
+        return React.createElement(
+          DefaultStylePanel,
+          props,
+          StylePanelSection && StylePanelColorPicker
+            ? React.createElement(
+                StylePanelSection,
+                null,
+                React.createElement(StylePanelColorPicker, null)
+              )
+            : null,
+          StylePanelSection
+            ? React.createElement(
+                StylePanelSection,
+                null,
+                React.createElement(CustomFillPicker, null),
+                StylePanelSizePicker
+                  ? React.createElement(StylePanelSizePicker, null)
+                  : null
+              )
+            : null
+        );
+      }
+
       const container = document.getElementById("app");
       const root = createRoot(container);
 
       root.render(
         React.createElement(Tldraw, {
           components: {
-            Toolbar: CustomToolbar
+            Toolbar: CustomToolbar,
+            StylePanel: CustomStylePanel
           },
           onMount: (editor) => {
             window.editor = editor;

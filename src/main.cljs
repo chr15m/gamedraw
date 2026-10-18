@@ -21,6 +21,20 @@
     "xl" (/ 11.0 10.0)
     1.0))
 
+(defn sync-line-sizes [editor]
+  (let [selected (.getSelectedShapes editor)
+        updates (js/Array.)]
+    (doseq [s selected]
+      (when (= (.-type s) "line")
+        (let [cur-size (.. s -props -size)
+              cur-scale (or (.. s -props -scale) 1.0)
+              expected-scale (size->line-scale cur-size)]
+          (when (> (js/Math.abs (- cur-scale expected-scale)) 0.001)
+            (let [new-props (js/Object.assign #js {} (.-props s) #js {:scale expected-scale})]
+              (.push updates #js {:id (.-id s) :type (.-type s) :props new-props}))))))
+    (when (> (.-length updates) 0)
+      (.updateShapes editor updates))))
+
 (defn set-thickness [t]
   (when-let [editor (get-editor)]
     (let [size-str (thickness->size t)
@@ -360,11 +374,15 @@
         (.preventDefault e)
         (duplicate-in-place)))))
 
+(defn init-editor-listeners [editor]
+  (reset! editor-atom editor)
+  (.on editor "change" (fn [_] (sync-line-sizes editor))))
+
 (defonce _ready-listener
   (.addEventListener js/window "tldraw-ready"
     (fn [e]
       (js/console.log "tldraw is ready!")
-      (reset! editor-atom (.-detail e)))))
+      (init-editor-listeners (.-detail e)))))
 
 (when (exists? js/window.editor)
-  (reset! editor-atom js/window.editor))
+  (init-editor-listeners js/window.editor))

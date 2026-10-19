@@ -17,11 +17,32 @@ The system uses Excalidraw as the rendering canvas and geometry engine.
   - Set `roundness` to type 2 for a smooth curve.
   - Set `strokeWidth` to the active stroke thickness.
   - Tag element with `customData.converted = true`.
-- If the start point and end point are adjacent, or if fill color is present:
-  - Close the path.
-  - Set `polygon` to true.
-  - Set `fillStyle` to `solid`.
-- The system must replace the original `freedraw` element in the scene element list.
+- Proximity closure detection:
+  - When pointer goes up, compute distance between start point and end point of the stroke.
+  - If distance is within threshold (e.g. 16px) or stroke segment has `isClosed: true`:
+    - Mark line as closed (`props.isClosed = true`).
+    - Snap end point coordinate to exactly equal the start point coordinate.
+    - Set active fill style (`props.fill`) from current editor fill state.
+  - Otherwise, leave line as open (`props.isClosed = false`, `props.fill = "none"`).
+- Extended `line` shape utility (`CustomLineShapeUtil`):
+  - Extend schema props to include `fill` (`DefaultFillStyle`) and `isClosed` (boolean).
+  - Override `getGeometry(shape)`:
+    - If `shape.props.isClosed` is true, produce closed geometry (`isClosed = true`, `isFilled = fill !== "none"`).
+    - Ensure hit-testing, selection bounds, and pointer interactions respect filled interior.
+  - Override `component(shape)` and `toSvg(shape)`:
+    - Render filled path with closing `Z` instruction when `isClosed` is true.
+    - Render fill color and stroke respecting active styles.
+- Open / Close toggle control:
+  - Add toolbar button / action to toggle shape closure on selected `line` shapes.
+  - When closing:
+    - Set `props.isClosed = true`.
+    - Snap or insert end point matching start point.
+    - If fill is `none`, default fill to `solid`.
+  - When opening:
+    - Set `props.isClosed = false`.
+    - Adjust terminal point if identical to start point.
+    - Retain or clear fill according to preference.
+- The system must replace the original `draw` shape with the converted `line` shape.
 
 ### 2.2 Sprite Grid Guide
 

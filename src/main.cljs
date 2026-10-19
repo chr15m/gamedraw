@@ -294,26 +294,63 @@
         res))
     pts))
 
-(defn clamp-max-knot-dist [pts max-dist]
+(defn tighten-sharp-corners [pts is-closed?]
   (let [n (.-length pts)]
-    (if (< n 2)
+    (if (< n 3)
       pts
       (let [res (js/Array.)
-            p0 (aget pts 0)]
-        (.push res p0)
-        (dotimes [i (dec n)]
-          (let [p1 (aget pts i)
-                p2 (aget pts (inc i))
-                d (pt-dist p1 p2)]
-            (when (> d max-dist)
-              (let [steps (js/Math.ceil (/ d max-dist))]
-                (dotimes [s (dec steps)]
-                  (let [t (/ (inc s) steps)
-                        x (+ (or (.-x p1) 0) (* t (- (or (.-x p2) 0) (or (.-x p1) 0))))
-                        y (+ (or (.-y p1) 0) (* t (- (or (.-y p2) 0) (or (.-y p1) 0))))
-                        z (or (.-z p1) 0.5)]
-                    (.push res #js {:x x :y y :z z})))))
-            (.push res p2)))
+            corner-cos-thresh 0.707 ; turns sharper than ~45 deg
+            min-arm-dist 16.0
+            stabilizer-dist 8.0
+            start-idx (if is-closed? 0 1)
+            end-idx (if is-closed? n (dec n))
+            needs-pre (make-array n)
+            needs-post (make-array n)]
+        (dotimes [step (- end-idx start-idx)]
+          (let [i (+ start-idx step)
+                prev-i (if (zero? i) (dec n) (dec i))
+                next-i (if (= i (dec n)) 0 (inc i))
+                p0 (aget pts prev-i)
+                p1 (aget pts i)
+                p2 (aget pts next-i)
+                dx1 (- (.-x p1) (.-x p0))
+                dy1 (- (.-y p1) (.-y p0))
+                d1 (js/Math.hypot dx1 dy1)
+                dx2 (- (.-x p2) (.-x p1))
+                dy2 (- (.-y p2) (.-y p1))
+                d2 (js/Math.hypot dx2 dy2)]
+            (when (and (> d1 0.001) (> d2 0.001))
+              (let [dot (+ (* dx1 dx2) (* dy1 dy2))
+                    cos-angle (/ dot (* d1 d2))]
+                ;; When cos-angle < 0.707, deflection angle is sharp (> 45 deg)
+                (when (< cos-angle corner-cos-thresh)
+                  (when (> d1 min-arm-dist)
+                    (aset needs-pre i true))
+                  (when (> d2 min-arm-dist)
+                    (aset needs-post i true)))))))
+        (dotimes [i n]
+          (let [p (aget pts i)
+                prev-i (if (zero? i) (dec n) (dec i))
+                next-i (if (= i (dec n)) 0 (inc i))]
+            (when (aget needs-pre i)
+              (let [p-prev (aget pts prev-i)
+                    dx (- (.-x p) (.-x p-prev))
+                    dy (- (.-y p) (.-y p-prev))
+                    d (js/Math.hypot dx dy)
+                    t (- 1.0 (/ stabilizer-dist d))]
+                (.push res #js {:x (+ (.-x p-prev) (* t dx))
+                                :y (+ (.-y p-prev) (* t dy))
+                                :z (or (.-z p) 0.5)})))
+            (.push res p)
+            (when (aget needs-post i)
+              (let [p-next (aget pts next-i)
+                    dx (- (.-x p-next) (.-x p))
+                    dy (- (.-y p-next) (.-y p))
+                    d (js/Math.hypot dx dy)
+                    t (/ stabilizer-dist d)]
+                (.push res #js {:x (+ (.-x p) (* t dx))
+                                :y (+ (.-y p) (* t dy))
+                                :z (or (.-z p) 0.5)})))))
         res))))
 
 (defn size->tolerance [size-str]
@@ -353,21 +390,22 @@
           (= (.-type s) "line")
           (let [size-str (or (.. s -props -size) "m")
                 tolerance (size->tolerance size-str)
+                is-closed? (boolean (.. s -props -isClosed))
                 pts (line-shape->points s)]
             (when (> (.-length pts) 2)
               (let [simplified (simplify-segment-points pts tolerance)
-                    bounded (clamp-max-knot-dist simplified 24.0)
-                    _ (when (.. s -props -isClosed)
-                        (let [p0 (aget bounded 0)
-                              pn-idx (dec (.-length bounded))]
-                          (aset bounded pn-idx
+                    tightened (tighten-sharp-corners simplified is-closed?)
+                    _ (when is-closed?
+                        (let [p0 (aget tightened 0)
+                              pn-idx (dec (.-length tightened))]
+                          (aset tightened pn-idx
                                 #js {:x (.-x p0) :y (.-y p0) :z (or (.-z p0) 0.5)})))
-                    new-pts-obj (build-line-points bounded)
+                    new-pts-obj (build-line-points tightened)
                     new-props (js/Object.assign #js {} (.-props s)
                                                 #js {:points new-pts-obj})]
                 (js/console.log "simplify-selected-lines (line):"
                                 (.-length pts) "->" (.-length simplified)
-                                "bounded:" (.-length bounded)
+                                "tightened:" (.-length tightened)
                                 "tolerance:" tolerance)
                 (.push updates #js {:id (.-id s)
                                     :type (.-type s)

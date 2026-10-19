@@ -187,37 +187,39 @@
 
         getHandles(shape) {
           const isEditing = editingLineId.get() === shape.id;
-          console.log("CustomLineShapeUtil.getHandles called:", {
-            shapeId: shape.id,
-            isClosed: shape.props && shape.props.isClosed,
-            isEditing: isEditing,
-            editingLineId: editingLineId.get()
-          });
           if (!isEditing) {
             return [];
           }
+          this._gettingHandles = true;
+          let handles;
+          try {
+            handles = super.getHandles(shape);
+          } finally {
+            this._gettingHandles = false;
+          }
           const geom = this.getGeometry(shape);
-          console.log("CustomLineShapeUtil.getHandles: geometry inspect:", {
+          const segments = geom && (geom.segments || (typeof geom.getSegments === "function" ? geom.getSegments() : null));
+          console.log("CustomLineShapeUtil.getHandles summary:", {
             shapeId: shape.id,
-            geomClass: geom && geom.constructor && geom.constructor.name,
-            hasGetSegments: typeof (geom && geom.getSegments) === "function",
-            hasSegmentsProp: Boolean(geom && geom.segments),
-            geomKeys: geom ? Object.keys(geom) : []
+            isClosed: Boolean(shape.props && shape.props.isClosed),
+            knotCount: shape.props && shape.props.points ? Object.keys(shape.props.points).length : 0,
+            geomSegmentsCount: segments ? segments.length : 0,
+            handlesCount: handles ? handles.length : 0,
+            createHandles: handles
+              ? handles.filter((h) => h.type === "create").map((h) => ({ id: h.id, x: Math.round(h.x), y: Math.round(h.y) }))
+              : []
           });
-          return super.getHandles(shape);
+          return handles;
         }
 
         getGeometry(shape) {
           const baseGeom = super.getGeometry(shape);
+          if (this._gettingHandles) {
+            return baseGeom;
+          }
           if (shape.props && shape.props.isClosed) {
             const isFilled = shape.props.fill && shape.props.fill !== "none";
             const vertices = baseGeom && baseGeom.vertices;
-            console.log("CustomLineShapeUtil.getGeometry (closed shape):", {
-              shapeId: shape.id,
-              baseGeomClass: baseGeom && baseGeom.constructor && baseGeom.constructor.name,
-              verticesCount: vertices ? vertices.length : 0,
-              hasPolygon2d: Boolean(Polygon2d)
-            });
             if (vertices && vertices.length >= 3 && Polygon2d) {
               const poly = new Polygon2d({
                 points: vertices,
@@ -228,11 +230,6 @@
                   return this.segments;
                 };
               }
-              console.log("CustomLineShapeUtil.getGeometry created Polygon2d:", {
-                polyClass: poly.constructor && poly.constructor.name,
-                hasGetSegments: typeof poly.getSegments === "function",
-                hasSegments: Boolean(poly.segments)
-              });
               return poly;
             }
             if (baseGeom) {

@@ -123,6 +123,18 @@
         }
       }
 
+      function toggleVertexEditMode() {
+        if (!window.editor) return;
+        const selected = window.editor.getSelectedShapes();
+        if (selected.length === 1 && selected[0].type === "line") {
+          toggleEditingLine(selected[0].id);
+        } else if (editingLineId.get()) {
+          clearEditingLine();
+        }
+      }
+
+      window.toggleVertexEditMode = toggleVertexEditMode;
+
       function resolveColor(editor, colorName, variant = "solid") {
         if (!colorName) return "black";
         if (colorName.startsWith("#") || colorName.startsWith("rgb")) {
@@ -326,9 +338,25 @@
           return editingLineId.get() === shape.id;
         };
 
-        onDoubleClick = (shape) => {
-          toggleEditingLine(shape.id);
-        };
+        onDoubleClickHandle(shape, handle) {
+          if (handle && handle.type === "vertex") {
+            const pts = { ...shape.props.points };
+            const keys = Object.keys(pts);
+            if (keys.length > 2) {
+              delete pts[handle.id];
+              return {
+                id: shape.id,
+                type: shape.type,
+                props: {
+                  points: pts
+                }
+              };
+            }
+          }
+          if (typeof super.onDoubleClickHandle === "function") {
+            return super.onDoubleClickHandle(shape, handle);
+          }
+        }
 
         onResize(shape, info) {
           if (typeof super.onResize === "function") {
@@ -361,10 +389,33 @@
       window.addEventListener("keydown", (e) => {
         if (e.key === "Escape" && editingLineId.get()) {
           clearEditingLine();
+        } else if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+          if (window.editor) {
+            const selected = window.editor.getSelectedShapes();
+            if (selected.length === 1 && selected[0].type === "line") {
+              toggleVertexEditMode();
+            }
+          }
         }
       });
 
       function CustomToolbar(props) {
+        const [, setTick] = React.useState(0);
+        React.useEffect(() => {
+          if (!window.editor) return;
+          const unlisten = window.editor.on("change", () => {
+            setTick((t) => t + 1);
+          });
+          return () => {
+            if (typeof unlisten === "function") unlisten();
+          };
+        }, []);
+
+        const editor = window.editor;
+        const selectedShapes = editor && editor.getSelectedShapes ? editor.getSelectedShapes() : [];
+        const isSingleLineSelected = selectedShapes.length === 1 && selectedShapes[0].type === "line";
+        const isEditingVertices = isSingleLineSelected && editingLineId.get() === selectedShapes[0].id;
+
         return React.createElement(
           DefaultToolbar,
           props,
@@ -374,6 +425,35 @@
           React.createElement(EraserToolbarItem, null),
           React.createElement(LineToolbarItem, null),
           React.createElement(AssetToolbarItem, null),
+          React.createElement(
+            TldrawUiButton,
+            {
+              type: "tool",
+              title: "Edit vertices (Enter)",
+              "data-state": isEditingVertices ? "selected" : undefined,
+              disabled: !isSingleLineSelected && !editingLineId.get(),
+              onClick: () => {
+                toggleVertexEditMode();
+              }
+            },
+            React.createElement(
+              "svg",
+              {
+                width: 18,
+                height: 18,
+                viewBox: "0 0 24 24",
+                fill: "none",
+                stroke: "currentColor",
+                strokeWidth: "2",
+                strokeLinecap: "round",
+                strokeLinejoin: "round"
+              },
+              React.createElement("circle", { cx: "6", cy: "6", r: "3", fill: "currentColor" }),
+              React.createElement("circle", { cx: "18", cy: "18", r: "3", fill: "currentColor" }),
+              React.createElement("path", { d: "M8.5 8.5l7 7" }),
+              React.createElement("path", { d: "M12 4l8 8" })
+            )
+          ),
           React.createElement(
             TldrawUiButton,
             {
@@ -612,16 +692,6 @@
                     window.convertFinishedDraw();
                   }
                 }, 0);
-              }
-              if (info.name === "double_click") {
-                const shape =
-                  info.shape ||
-                  (editor.getSelectedShapes().length === 1
-                    ? editor.getSelectedShapes()[0]
-                    : null);
-                if (shape && shape.type === "line") {
-                  toggleEditingLine(shape.id);
-                }
               }
             });
             editor.on("change", () => {

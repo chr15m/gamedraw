@@ -37,11 +37,11 @@ The system uses Excalidraw as the rendering canvas and geometry engine.
   - When closing:
     - Set `props.isClosed = true`.
     - Snap or insert end point matching start point.
-    - If fill is `none`, default fill to `solid`.
+    - Retain previous fill value (defaults to `none` if previously unfilled).
   - When opening:
     - Set `props.isClosed = false`.
     - Adjust terminal point if identical to start point.
-    - Retain or clear fill according to preference.
+    - Retain previous fill value.
 - The system must replace the original `draw` shape with the converted `line` shape.
 
 ### 2.2 Sprite Grid Guide

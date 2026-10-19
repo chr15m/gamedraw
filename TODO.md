@@ -1,4 +1,6 @@
 - [x] Implement line simplification for tldraw draw shapes (decode and encode b64Vecs with simplify-js)
+- [ ] Ability to delete points easily
+- [ ] Display size of current page definition stringified in kb in top right
 - [ ] Integrate custom buttons into native toolbar via uiOverrides (thickness presets, duplicate, simplify)
 - [x] Hide unnecessary default tools from toolbar (arrows, geo shapes, notes, frames, laser)
 - [x] Implement constant-width strokes (disable pressure variance for sprite drawing)

@@ -424,7 +424,7 @@
                       new-pts-obj (build-line-points pts-vec)
                       new-props (js/Object.assign #js {} (.-props s)
                                                   #js {:isClosed false
-                                                       :fill "none"
+                                                       :fill (or cur-fill "none")
                                                        :points new-pts-obj})]
                   (js/console.log "toggle-selected-lines-closed: opening line:" (.-id s))
                   (.push updates #js {:id (.-id s) :type (.-type s) :props new-props}))
@@ -438,7 +438,7 @@
                             (aset pts-vec last-idx #js {:x (.-x p0) :y (.-y p0) :z (or (.-z p0) 0.5)}))
                           (.push pts-vec #js {:x (.-x p0) :y (.-y p0) :z (or (.-z p0) 0.5)}))
                       new-pts-obj (build-line-points pts-vec)
-                      new-fill (if (or (nil? cur-fill) (= cur-fill "none")) "solid" cur-fill)
+                      new-fill (or cur-fill "none")
                       new-props (js/Object.assign #js {} (.-props s)
                                                   #js {:isClosed true
                                                        :fill new-fill

@@ -20,57 +20,83 @@ html, body, #app {
   background-color: var(--page-background, #f8f9fa) !important;
 }
 
-.palette-swatches-grid {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 4px;
-  padding: 4px 0;
-}
-
-.palette-swatch-btn {
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  border: 1px solid rgba(0, 0, 0, 0.2);
-  cursor: pointer;
-  padding: 0;
-  margin: 0;
+.palette-picker-container {
+  width: 100%;
   box-sizing: border-box;
-  outline-offset: 1px;
-}
-
-.palette-swatch-btn:hover {
-  transform: scale(1.1);
-}
-
-.palette-swatch-btn[data-state="selected"] {
-  outline: 2px solid var(--color-primary, #2f80ed);
-  border-color: #ffffff;
+  padding: 6px 4px 2px 4px;
 }
 
 .palette-select-header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   margin-bottom: 6px;
+  padding-top: 2px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .palette-dropdown {
   flex: 1;
-  padding: 4px 6px;
+  min-width: 0;
+  width: 0;
+  height: 24px;
+  padding: 0 4px;
   border-radius: 4px;
   border: 1px solid var(--color-panel-contrast, #d1d5db);
   background: var(--color-panel, #ffffff);
   color: var(--color-text, #111827);
-  font-size: 12px;
+  font-size: 11px;
+  box-sizing: border-box;
 }
 
 .palette-dark-mode-btn {
-  padding: 4px 8px;
+  flex-shrink: 0;
+  height: 24px;
+  padding: 0 6px;
   font-size: 12px;
   border-radius: 4px;
   border: 1px solid var(--color-panel-contrast, #d1d5db);
   background: var(--color-panel, #ffffff);
+  color: var(--color-text, #111827);
   cursor: pointer;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.palette-swatches-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 3px;
+  padding: 2px 0;
+  box-sizing: border-box;
+  justify-items: center;
+  align-items: center;
+}
+
+.palette-swatch-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+  outline-offset: 1px;
+  position: relative;
+}
+
+.palette-swatch-btn:hover {
+  transform: scale(1.15);
+  z-index: 2;
+}
+
+.palette-swatch-btn[data-state="selected"] {
+  outline: 2px solid var(--color-primary, #2f80ed);
+  border-color: #ffffff;
+  z-index: 1;
 }
 

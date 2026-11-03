@@ -42,6 +42,18 @@
         manifestLink.rel = 'manifest';
         manifestLink.href = 'data:application/json;base64,' + btoa(JSON.stringify(manifest));
         document.head.appendChild(manifestLink);
+
+        if ('serviceWorker' in navigator) {
+          window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+              .then((reg) => {
+                reg.update();
+              })
+              .catch((err) => {
+                console.error('Service worker registration failed:', err);
+              });
+          });
+        }
       })();
     </script>
     <link rel="stylesheet" href="https://esm.sh/tldraw/tldraw.css">
@@ -166,6 +178,67 @@
       window.getPointsFromDrawSegment = getPointsFromDrawSegment;
       window.getIndices = getIndices;
       window.sortByIndex = sortByIndex;
+
+      window.addTraceImageToCanvas = (imgUrl, width, height) => {
+        const editor = window.editor;
+        if (!editor) return;
+
+        const bounds = editor.getViewportPageBounds();
+        const cx = bounds.minX + bounds.width / 2;
+        const cy = bounds.minY + bounds.height / 2;
+
+        const aspect = (width && height) ? (width / height) : 1;
+        let targetW = 600;
+        let targetH = 600 / aspect;
+
+        if (targetH > bounds.height * 0.85) {
+          targetH = bounds.height * 0.85;
+          targetW = targetH * aspect;
+        }
+
+        const uniqueKey = Date.now() + "_" + Math.floor(Math.random() * 10000);
+        const assetId = "asset:pin_" + uniqueKey;
+        const shapeId = "shape:pin_" + uniqueKey;
+
+        try {
+          if (typeof editor.createAssets === "function") {
+            editor.createAssets([{
+              id: assetId,
+              typeName: "asset",
+              type: "image",
+              props: {
+                name: "pin-trace",
+                src: imgUrl,
+                w: targetW,
+                h: targetH,
+                mimeType: "image/jpeg",
+                isAnimated: false
+              },
+              meta: {}
+            }]);
+          }
+        } catch (err) {
+          console.error("createAssets error:", err);
+        }
+
+        editor.createShapes([{
+          id: shapeId,
+          type: "image",
+          x: cx - targetW / 2,
+          y: cy - targetH / 2,
+          opacity: 0.5,
+          isLocked: true,
+          props: {
+            assetId: assetId,
+            w: targetW,
+            h: targetH
+          }
+        }]);
+
+        if (typeof editor.sendToBack === "function") {
+          editor.sendToBack([shapeId]);
+        }
+      };
 
       if (Polygon2d && !Polygon2d.prototype.getSegments) {
         Polygon2d.prototype.getSegments = function () {
@@ -1004,9 +1077,11 @@
         })
       );
     </script>
+    <script type="application/x-scittle" src="pinterest.cljs"></script>
     <script type="application/x-scittle" src="main.cljs"></script>
   </head>
   <body>
     <div id="app"></div>
+    <div id="pinterest-root"></div>
   </body>
 </html>

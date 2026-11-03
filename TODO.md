@@ -2,7 +2,7 @@
 
 ## TODO
 
-- [ ] Browse and import reference images from a Pinterest board
+- [x] Browse and import reference images from a Pinterest board
 
 - [ ] sync to nostr
 

@@ -125,3 +125,234 @@ html, body, #app {
   z-index: 1;
 }
 
+/* Pinterest Integration & Viewer Styles */
+.pin-toggle-btn {
+  position: fixed;
+  top: 10px;
+  right: 12px;
+  z-index: 300;
+  height: 34px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #171819;
+  color: #e8e8e8;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  user-select: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.pin-toggle-btn:hover {
+  background: #252628;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.pin-viewer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #171819;
+  color: #e8e8e8;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+}
+
+.pin-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: rgba(23, 24, 25, 0.95);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  gap: 10px;
+  z-index: 10;
+  flex-wrap: wrap;
+}
+
+.pin-header-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pin-select {
+  height: 30px;
+  background: #232426;
+  color: #e8e8e8;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  padding: 0 8px;
+  font-size: 12px;
+  max-width: 180px;
+}
+
+.pin-btn {
+  height: 30px;
+  padding: 0 10px;
+  background: #232426;
+  color: #e8e8e8;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: background 0.15s ease;
+}
+
+.pin-btn:hover {
+  background: #313336;
+}
+
+.pin-btn.pin-btn-primary {
+  background: #2f80ed;
+  border-color: #2f80ed;
+  color: #ffffff;
+}
+
+.pin-btn.pin-btn-primary:hover {
+  background: #1d6ed8;
+}
+
+.pin-btn[data-state="active"] {
+  background: #3b4252;
+  border-color: #5e81ac;
+}
+
+.pin-counter {
+  font-size: 12px;
+  color: #a0a0a5;
+  font-family: monospace;
+}
+
+.pin-viewport {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #121314;
+}
+
+.pin-image-wrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pin-main-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.pin-nav-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 50px;
+  height: 70px;
+  background: rgba(23, 24, 25, 0.5);
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  opacity: 0;
+  transition: opacity 0.2s ease, background 0.15s ease;
+  z-index: 5;
+}
+
+.pin-nav-arrow.pin-arrow-left {
+  left: 16px;
+}
+
+.pin-nav-arrow.pin-arrow-right {
+  right: 16px;
+}
+
+.pin-viewport:hover .pin-nav-arrow,
+.pin-nav-arrow.visible {
+  opacity: 1;
+}
+
+.pin-nav-arrow:hover {
+  background: rgba(23, 24, 25, 0.85);
+}
+
+.pin-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #9e9ea6;
+}
+
+/* Settings Modal */
+.pin-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pin-modal-card {
+  width: 320px;
+  background: #1d1e20;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 18px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pin-modal-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.pin-modal-input {
+  height: 32px;
+  background: #141517;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  padding: 0 8px;
+  font-size: 13px;
+  outline: none;
+}
+
+.pin-modal-input:focus {
+  border-color: #2f80ed;
+}
+
+.pin-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+

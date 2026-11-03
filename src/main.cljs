@@ -544,11 +544,14 @@
       (or (aget meta "paletteId") "cc-29"))
     "cc-29"))
 
-(defn is-page-dark-mode? []
+(defn get-page-background-color []
   (if-let [editor (get-editor)]
-    (let [meta (get-current-page-meta editor)]
-      (boolean (aget meta "isDarkMode")))
-    false))
+    (let [meta (get-current-page-meta editor)
+          pal-id (or (aget meta "paletteId") "cc-29")
+          pal (get palettes pal-id (get palettes "cc-29"))
+          extremes (get-palette-extremes pal)]
+      (or (aget meta "backgroundColor") (:bg-light extremes)))
+    "#f2f0e5"))
 
 (declare set-current-active-color)
 
@@ -560,14 +563,16 @@
      (when page
        (let [meta (or meta-override (.-meta page) #js {})
              pal-id (or (aget meta "paletteId") "cc-29")
-             is-dark (boolean (aget meta "isDarkMode"))
              pal (get palettes pal-id (get palettes "cc-29"))
              extremes (get-palette-extremes pal)
-             bg-color (if is-dark (:bg-dark extremes) (:bg-light extremes))
-             fg-color (if is-dark (:lightest extremes) (:darkest extremes))]
-         (when (and (nil? meta-override) (nil? (aget meta "paletteId")))
-           (let [new-meta (js/Object.assign #js {} meta #js {:paletteId "cc-29"
-                                                             :isDarkMode is-dark})]
+             default-bg (:bg-light extremes)
+             cur-bg (aget meta "backgroundColor")
+             bg-color (if (and cur-bg (some #{(str cur-bg)} (:colors pal)))
+                        cur-bg
+                        default-bg)]
+         (when (or (nil? (aget meta "paletteId")) (nil? (aget meta "backgroundColor")))
+           (let [new-meta (js/Object.assign #js {} meta #js {:paletteId pal-id
+                                                             :backgroundColor bg-color})]
              (.updatePage editor #js {:id (.-id page) :meta new-meta})))
          (when-let [root js/document.documentElement]
            (.setProperty (.-style root) "--page-background" bg-color)
@@ -579,28 +584,29 @@
            (.. el -style (setProperty "--page-background" bg-color "important"))
            (.. el -style (setProperty "--color-background" bg-color "important"))
            (.. el -style (setProperty "background-color" bg-color "important")))
-         (when (and (.-user editor)
-                    (not= (.getIsDarkMode (.-user editor)) is-dark))
-           (.updateUserPreferences (.-user editor)
-             #js {:colorScheme (if is-dark "dark" "light")
-                  :isDarkMode is-dark}))
-         (set-current-active-color fg-color))))))
+         (when (nil? @current-active-color-atom)
+           (set-current-active-color (:darkest extremes))))))))
 
 (defn set-page-palette [pal-id]
   (when-let [editor (get-editor)]
     (let [page (.getCurrentPage editor)
           meta (or (.-meta page) #js {})
-          new-meta (js/Object.assign #js {} meta #js {:paletteId pal-id})]
+          pal (get palettes pal-id (get palettes "cc-29"))
+          extremes (get-palette-extremes pal)
+          cur-bg (aget meta "backgroundColor")
+          new-bg (if (and cur-bg (some #{(str cur-bg)} (:colors pal)))
+                   cur-bg
+                   (:bg-light extremes))
+          new-meta (js/Object.assign #js {} meta #js {:paletteId pal-id
+                                                      :backgroundColor new-bg})]
       (.updatePage editor #js {:id (.-id page) :meta new-meta})
       (apply-page-visuals editor new-meta))))
 
-(defn toggle-page-dark-mode []
+(defn set-page-background-color [bg-color]
   (when-let [editor (get-editor)]
     (let [page (.getCurrentPage editor)
           meta (or (.-meta page) #js {})
-          cur-dark (boolean (aget meta "isDarkMode"))
-          new-dark (not cur-dark)
-          new-meta (js/Object.assign #js {} meta #js {:isDarkMode new-dark})]
+          new-meta (js/Object.assign #js {} meta #js {:backgroundColor bg-color})]
       (.updatePage editor #js {:id (.-id page) :meta new-meta})
       (apply-page-visuals editor new-meta))))
 
@@ -655,8 +661,8 @@
 (set! (.-getPalettes js/window) get-palettes-js)
 (set! (.-getCurrentPaletteId js/window) get-current-palette-id)
 (set! (.-setPagePalette js/window) set-page-palette)
-(set! (.-isPageDarkMode js/window) is-page-dark-mode?)
-(set! (.-togglePageDarkMode js/window) toggle-page-dark-mode)
+(set! (.-getPageBackgroundColor js/window) get-page-background-color)
+(set! (.-setPageBackgroundColor js/window) set-page-background-color)
 (set! (.-setCurrentActiveColor js/window) set-current-active-color)
 (set! (.-getCurrentActiveColor js/window) get-current-active-color)
 

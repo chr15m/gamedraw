@@ -29,6 +29,7 @@
         Tldraw,
         LineShapeUtil,
         atom,
+        StyleProp,
         DefaultToolbar,
         SelectToolbarItem,
         HandToolbarItem,
@@ -38,6 +39,7 @@
         AssetToolbarItem,
         TldrawUiButton,
         b64Vecs,
+        DefaultColorStyle,
         DefaultDashStyle,
         DefaultFillStyle,
         DefaultSizeStyle,
@@ -58,8 +60,17 @@
         T
       } = tldraw;
 
+      const CustomColorStyle = StyleProp && StyleProp.define
+        ? StyleProp.define("sprite:color", {
+            defaultValue: "#212123",
+            type: T && T.string ? T.string : undefined
+          })
+        : DefaultColorStyle;
+
       window.React = React;
       window.b64Vecs = b64Vecs;
+      window.CustomColorStyle = CustomColorStyle;
+      window.DefaultColorStyle = DefaultColorStyle;
       window.DefaultDashStyle = DefaultDashStyle;
       window.DefaultFillStyle = DefaultFillStyle;
       window.DefaultSizeStyle = DefaultSizeStyle;
@@ -167,17 +178,89 @@
         return colorName;
       }
 
+      function syncActiveThemeColor(colorVal) {
+        if (!window.editor || !colorVal) return;
+        const editor = window.editor;
+        const targetColor = colorVal.startsWith("#") ? colorVal : null;
+
+        try {
+          if (typeof editor.getTheme === "function" &&
+              typeof editor.updateTheme === "function") {
+            const theme = editor.getTheme("default");
+            if (theme && theme.colors) {
+              const lightSolid = targetColor || "#1d1c20";
+              const darkSolid = targetColor || "#e2e1e4";
+              editor.updateTheme({
+                ...theme,
+                colors: {
+                  ...theme.colors,
+                  light: {
+                    ...theme.colors.light,
+                    black: { ...theme.colors.light?.black, solid: lightSolid }
+                  },
+                  dark: {
+                    ...theme.colors.dark,
+                    black: { ...theme.colors.dark?.black, solid: darkSolid }
+                  }
+                }
+              });
+            }
+          }
+        } catch (err) {
+          console.error("syncActiveThemeColor updateTheme error:", err);
+        }
+
+        try {
+          if (typeof editor.getCurrentTheme === "function") {
+            const curTheme = editor.getCurrentTheme();
+            if (curTheme) {
+              const lightSolid = targetColor || "#1d1c20";
+              const darkSolid = targetColor || "#e2e1e4";
+              if (curTheme.colors) {
+                if (curTheme.colors.light?.black) {
+                  curTheme.colors.light.black.solid = lightSolid;
+                }
+                if (curTheme.colors.dark?.black) {
+                  curTheme.colors.dark.black.solid = darkSolid;
+                }
+              }
+              if (curTheme.black && targetColor) {
+                curTheme.black.solid = targetColor;
+              }
+            }
+          }
+        } catch (err) {
+          console.error("syncActiveThemeColor getCurrentTheme error:", err);
+        }
+
+        try {
+          if (tldraw.DefaultColorThemePalette && targetColor) {
+            if (tldraw.DefaultColorThemePalette.lightMode?.black) {
+              tldraw.DefaultColorThemePalette.lightMode.black.solid = targetColor;
+            }
+            if (tldraw.DefaultColorThemePalette.darkMode?.black) {
+              tldraw.DefaultColorThemePalette.darkMode.black.solid = targetColor;
+            }
+          }
+        } catch (_) {}
+      }
+
+      window.syncActiveThemeColor = syncActiveThemeColor;
+
       class CustomLineShapeUtil extends LineShapeUtil {
         static type = "line";
         static props = {
           ...LineShapeUtil.props,
+          color: CustomColorStyle,
           fill: DefaultFillStyle,
           isClosed: (T && T.boolean && T.boolean.optional ? T.boolean.optional() : (T ? T.boolean : undefined))
         };
 
         getDefaultProps() {
+          const activeColor = (window.getCurrentActiveColor && window.getCurrentActiveColor()) || "#212123";
           return {
             ...super.getDefaultProps(),
+            color: activeColor,
             fill: "none",
             isClosed: false
           };
@@ -553,8 +636,10 @@
           currentVal = selectedLines[0].props.fill || "none";
         } else if (DefaultFillStyle) {
           try {
-            currentVal = editor.getStyleForNextShapes(DefaultFillStyle) || "none";
-          } catch (_) {}
+            currentVal = editor.getStyleForNextShape(DefaultFillStyle) || "none";
+          } catch (err) {
+            console.error("CustomFillPicker getStyleForNextShape caught error:", err);
+          }
         }
 
         const items = [
@@ -567,7 +652,9 @@
             if (DefaultFillStyle) {
               try {
                 editor.setStyleForNextShapes(DefaultFillStyle, val);
-              } catch (_) {}
+              } catch (err) {
+                console.error("CustomFillPicker setStyleForNextShapes caught error:", err);
+              }
             }
             if (selectedLines.length > 0) {
               const updates = selectedLines.map((line) => {
@@ -586,7 +673,9 @@
             if (selectedShapes.length > selectedLines.length && DefaultFillStyle) {
               try {
                 editor.setStyleForSelectedShapes(DefaultFillStyle, val);
-              } catch (_) {}
+              } catch (err) {
+                console.error("CustomFillPicker setStyleForSelectedShapes caught error:", err);
+              }
             }
           });
         };
@@ -623,17 +712,103 @@
         );
       }
 
+      function CustomPalettePicker() {
+        const editor = window.editor;
+        const [, setTick] = React.useState(0);
+
+        React.useEffect(() => {
+          if (!editor) return;
+          const unlisten = editor.on("change", () => setTick((t) => t + 1));
+          return () => {
+            if (typeof unlisten === "function") unlisten();
+          };
+        }, [editor]);
+
+        if (!editor || !window.getPalettes) return null;
+
+        const palettes = window.getPalettes();
+        const currentPaletteId = window.getCurrentPaletteId ? window.getCurrentPaletteId() : "cc-29";
+        const isDark = window.isPageDarkMode ? window.isPageDarkMode() : false;
+        const selectedShapes = editor.getSelectedShapes ? editor.getSelectedShapes() : [];
+        const selectedLines = selectedShapes.filter((s) => s.type === "line");
+        let activeColor = window.getCurrentActiveColor ? window.getCurrentActiveColor() : null;
+        if (selectedLines.length > 0 && selectedLines[0].props && selectedLines[0].props.color) {
+          activeColor = selectedLines[0].props.color;
+        }
+        const activePalette = palettes[currentPaletteId] || palettes["cc-29"];
+
+        return React.createElement(
+          "div",
+          { className: "palette-picker-container" },
+          React.createElement(
+            "div",
+            { className: "palette-select-header" },
+            React.createElement(
+              "select",
+              {
+                className: "palette-dropdown",
+                value: currentPaletteId,
+                onChange: (e) => {
+                  if (window.setPagePalette) {
+                    window.setPagePalette(e.target.value);
+                  }
+                }
+              },
+              Object.keys(palettes).map((id) =>
+                React.createElement("option", { key: id, value: id }, palettes[id].name)
+              )
+            ),
+            React.createElement(
+              "button",
+              {
+                type: "button",
+                className: "palette-dark-mode-btn",
+                title: isDark ? "Switch to light mode" : "Switch to dark mode",
+                onClick: () => {
+                  if (window.togglePageDarkMode) {
+                    window.togglePageDarkMode();
+                  }
+                }
+              },
+              isDark ? "☀️" : "🌙"
+            )
+          ),
+          activePalette && activePalette.type === "named" && StylePanelColorPicker
+            ? React.createElement(StylePanelColorPicker, null)
+            : React.createElement(
+                "div",
+                { className: "palette-swatches-grid" },
+                (activePalette ? activePalette.colors : []).map((hex) => {
+                  const isSelected = activeColor && activeColor.toLowerCase() === hex.toLowerCase();
+                  return React.createElement("button", {
+                    key: hex,
+                    type: "button",
+                    className: "palette-swatch-btn",
+                    "data-state": isSelected ? "selected" : undefined,
+                    style: { backgroundColor: hex },
+                    title: hex,
+                    onClick: () => {
+                      if (window.setCurrentActiveColor) {
+                        window.setCurrentActiveColor(hex);
+                      }
+                    }
+                  });
+                })
+              )
+        );
+      }
+
       function CustomStylePanel(props) {
         if (!DefaultStylePanel) return null;
 
         return React.createElement(
           DefaultStylePanel,
           props,
-          StylePanelSection && StylePanelColorPicker
+          StylePanelSection
             ? React.createElement(
                 StylePanelSection,
                 null,
-                React.createElement(StylePanelColorPicker, null)
+                React.createElement(CustomPalettePicker, null)
               )
             : null,
           StylePanelSection
@@ -670,6 +845,9 @@
             }
             editor.setStyleForNextShapes(DefaultDashStyle, "solid");
             editor.setCurrentTool("draw");
+            const initialColor = (window.getCurrentActiveColor &&
+              window.getCurrentActiveColor()) || "#212123";
+            syncActiveThemeColor(initialColor);
             editor.on("event", (info) => {
               if (info.name === "pointer_up") {
                 setTimeout(() => {

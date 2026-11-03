@@ -7,3 +7,62 @@ html, body, #app {
   font-family: sans-serif;
 }
 
+#app .tl-container {
+  --color-background: var(--page-background, #f8f9fa) !important;
+  background-color: var(--color-background) !important;
+}
+
+.palette-swatches-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.palette-swatch-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+  outline-offset: 1px;
+}
+
+.palette-swatch-btn:hover {
+  transform: scale(1.1);
+}
+
+.palette-swatch-btn[data-state="selected"] {
+  outline: 2px solid var(--color-primary, #2f80ed);
+  border-color: #ffffff;
+}
+
+.palette-select-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.palette-dropdown {
+  flex: 1;
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--color-panel-contrast, #d1d5db);
+  background: var(--color-panel, #ffffff);
+  color: var(--color-text, #111827);
+  font-size: 12px;
+}
+
+.palette-dark-mode-btn {
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid var(--color-panel-contrast, #d1d5db);
+  background: var(--color-panel, #ffffff);
+  cursor: pointer;
+}
+

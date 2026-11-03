@@ -1,6 +1,50 @@
 (ns main)
 
 (defonce editor-atom (atom nil))
+(defonce last-page-id-atom (atom nil))
+(defonce current-active-color-atom (atom nil))
+
+(def palettes
+  {"cc-29"
+   {:id "cc-29"
+    :name "CC-29"
+    :type "hex"
+    :colors ["#f2f0e5" "#b8b5b9" "#868188" "#646365" "#45444f" "#3a3858"
+             "#212123" "#352b42" "#43436a" "#4b80ca" "#68c2d3" "#a2dcc7"
+             "#ede19e" "#d3a068" "#b45252" "#6a536e" "#4b4158" "#80493a"
+             "#a77b5b" "#e5ceb4" "#c2d368" "#8ab060" "#567b79" "#4e584a"
+             "#7b7243" "#b2b47e" "#edc8c4" "#cf8acb" "#5f556a"]}
+   "tldraw"
+   {:id "tldraw"
+    :name "Default (tldraw)"
+    :type "named"
+    :colors ["black" "grey" "light-violet" "violet" "blue" "light-blue"
+             "yellow" "orange" "green" "light-green" "light-red" "red"]}})
+
+(defn hex->rgb [hex]
+  (let [clean (if (= (.charAt hex 0) "#") (.slice hex 1) hex)
+        num (js/parseInt clean 16)]
+    [(bit-and (bit-shift-right num 16) 255)
+     (bit-and (bit-shift-right num 8) 255)
+     (bit-and num 255)]))
+
+(defn rgb->luminance [[r g b]]
+  (+ (* 0.2126 r) (* 0.7152 g) (* 0.0722 b)))
+
+(defn get-palette-extremes [pal]
+  (if (= (:type pal) "named")
+    {:lightest "grey"
+     :darkest "black"
+     :bg-light "#f8f9fa"
+     :bg-dark "#1e1e1e"}
+    (let [colors (:colors pal)
+          sorted (sort-by (fn [c] (rgb->luminance (hex->rgb c))) colors)
+          darkest (first sorted)
+          lightest (last sorted)]
+      {:lightest lightest
+       :darkest darkest
+       :bg-light lightest
+       :bg-dark darkest})))
 
 (defn get-editor []
   (or @editor-atom js/window.editor))
@@ -159,15 +203,20 @@
   (let [dfs (.-DefaultFillStyle js/window)]
     (or (when dfs
           (try
-            (let [val (.getStyleForNextShapes editor dfs)]
+            (let [val (.getStyleForNextShape editor dfs)]
               (when (and val (not= val "none")) val))
-            (catch :default _ nil)))
+            (catch :default err
+              (js/console.error "get-active-fill caught error:" err)
+              nil)))
         "none")))
+
+(declare get-current-active-color)
 
 (defn convert-finished-draw []
   (when-let [editor (get-editor)]
     (let [b64 (.-b64Vecs js/window)
           active-fill (get-active-fill editor)
+          active-color (or (get-current-active-color) "#212123")
           shapes (.getCurrentPageShapes editor)]
       (doseq [s shapes]
         (when (= (.-type s) "draw")
@@ -218,12 +267,13 @@
                     draw-scale (or (.-scale props) 1)
                     line-scale (* draw-scale (size->line-scale draw-size))
                     line-fill (if is-closed? active-fill "none")
+                    line-color active-color
                     line-shape #js {:id line-id
                                     :type "line"
                                     :x (.-x s)
                                     :y (.-y s)
                                     :meta #js {:converted true}
-                                    :props #js {:color (or (.-color props) "black")
+                                    :props #js {:color line-color
                                                 :dash (or (.-dash props) "solid")
                                                 :size draw-size
                                                 :spline "cubic"
@@ -484,9 +534,132 @@
         (.preventDefault e)
         (duplicate-in-place)))))
 
+(defn get-current-page-meta [editor]
+  (let [page (.getCurrentPage editor)]
+    (or (and page (.-meta page)) #js {})))
+
+(defn get-current-palette-id []
+  (if-let [editor (get-editor)]
+    (let [meta (get-current-page-meta editor)]
+      (or (aget meta "paletteId") "cc-29"))
+    "cc-29"))
+
+(defn is-page-dark-mode? []
+  (if-let [editor (get-editor)]
+    (let [meta (get-current-page-meta editor)]
+      (boolean (aget meta "isDarkMode")))
+    false))
+
+(declare set-current-active-color)
+
+(defn apply-page-visuals [editor]
+  (let [page (.getCurrentPage editor)]
+    (when page
+      (let [meta (or (.-meta page) #js {})
+            pal-id (or (aget meta "paletteId") "cc-29")
+            is-dark (boolean (aget meta "isDarkMode"))
+            pal (get palettes pal-id (get palettes "cc-29"))
+            extremes (get-palette-extremes pal)
+            bg-color (if is-dark (:bg-dark extremes) (:bg-light extremes))
+            fg-color (if is-dark (:lightest extremes) (:darkest extremes))
+            app-el (.getElementById js/document "app")]
+        (when (nil? (aget meta "paletteId"))
+          (let [new-meta (js/Object.assign #js {} meta #js {:paletteId "cc-29"
+                                                            :isDarkMode is-dark})]
+            (.updatePage editor #js {:id (.-id page) :meta new-meta})))
+        (when app-el
+          (.. app-el -style (setProperty "--color-background" bg-color "important"))
+          (.. app-el -style (setProperty "--page-background" bg-color "important")))
+        (when (and (.-user editor)
+                   (not= (.getIsDarkMode (.-user editor)) is-dark))
+          (.updateUserPreferences (.-user editor) #js {:isDarkMode is-dark}))
+        (set-current-active-color fg-color)))))
+
+(defn set-page-palette [pal-id]
+  (when-let [editor (get-editor)]
+    (let [page (.getCurrentPage editor)
+          meta (or (.-meta page) #js {})
+          new-meta (js/Object.assign #js {} meta #js {:paletteId pal-id})]
+      (.updatePage editor #js {:id (.-id page) :meta new-meta})
+      (apply-page-visuals editor))))
+
+(defn toggle-page-dark-mode []
+  (when-let [editor (get-editor)]
+    (let [page (.getCurrentPage editor)
+          meta (or (.-meta page) #js {})
+          cur-dark (boolean (aget meta "isDarkMode"))
+          new-meta (js/Object.assign #js {} meta #js {:isDarkMode (not cur-dark)})]
+      (.updatePage editor #js {:id (.-id page) :meta new-meta})
+      (apply-page-visuals editor))))
+
+(defn set-current-active-color [color-val]
+  (reset! current-active-color-atom color-val)
+  (when-let [editor (get-editor)]
+    (when-let [sync-theme (.-syncActiveThemeColor js/window)]
+      (sync-theme color-val))
+    (when-let [custom-style (.-CustomColorStyle js/window)]
+      (try
+        (.setStyleForNextShapes editor custom-style color-val)
+        (.setStyleForSelectedShapes editor custom-style color-val)
+        (catch :default err
+          (js/console.error "set-current-active-color CustomColorStyle error:" err))))
+    (when (.-DefaultColorStyle js/window)
+      (try
+        (let [style-val (if (.startsWith color-val "#") "black" color-val)]
+          (.setStyleForNextShapes editor (.-DefaultColorStyle js/window) style-val)
+          (when (not (.startsWith color-val "#"))
+            (.setStyleForSelectedShapes editor (.-DefaultColorStyle js/window) style-val)))
+        (catch :default err
+          (js/console.error "set-current-active-color DefaultColorStyle error:" err))))
+    (let [selected (.getSelectedShapes editor)
+          updates (js/Array.)]
+      (doseq [s selected]
+        (let [st (.-type s)]
+          (when (= st "line")
+            (let [new-props (js/Object.assign #js {} (.-props s) #js {:color color-val})]
+              (.push updates #js {:id (.-id s) :type st :props new-props})))))
+      (when (> (.-length updates) 0)
+        (.updateShapes editor updates)))))
+
+(defn get-current-active-color []
+  (if-let [editor (get-editor)]
+    (let [pal-id (get-current-palette-id)
+          pal (get palettes pal-id)]
+      (if (and pal (= (:type pal) "named") (.-DefaultColorStyle js/window))
+        (try
+          (.getStyleForNextShape editor (.-DefaultColorStyle js/window))
+          (catch :default err
+            (js/console.error "get-current-active-color caught error:" err)
+            @current-active-color-atom))
+        @current-active-color-atom))
+    @current-active-color-atom))
+
+(defn get-palettes-js []
+  (let [obj (js/Object.)]
+    (doseq [[k v] palettes]
+      (aset obj k (clj->js v)))
+    obj))
+
+(set! (.-getPalettes js/window) get-palettes-js)
+(set! (.-getCurrentPaletteId js/window) get-current-palette-id)
+(set! (.-setPagePalette js/window) set-page-palette)
+(set! (.-isPageDarkMode js/window) is-page-dark-mode?)
+(set! (.-togglePageDarkMode js/window) toggle-page-dark-mode)
+(set! (.-setCurrentActiveColor js/window) set-current-active-color)
+(set! (.-getCurrentActiveColor js/window) get-current-active-color)
+
+(defn handle-editor-change [editor]
+  (sync-line-sizes editor)
+  (let [cur-page-id (.getCurrentPageId editor)]
+    (when (not= cur-page-id @last-page-id-atom)
+      (reset! last-page-id-atom cur-page-id)
+      (apply-page-visuals editor))))
+
 (defn init-editor-listeners [editor]
   (reset! editor-atom editor)
-  (.on editor "change" (fn [_] (sync-line-sizes editor))))
+  (reset! last-page-id-atom (.getCurrentPageId editor))
+  (apply-page-visuals editor)
+  (.on editor "change" (fn [_] (handle-editor-change editor))))
 
 (defonce _ready-listener
   (.addEventListener js/window "tldraw-ready"

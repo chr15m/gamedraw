@@ -7,9 +7,17 @@ html, body, #app {
   font-family: sans-serif;
 }
 
-#app .tl-container {
+:root {
+  --page-background: #f2f0e5;
+}
+
+#app .tl-container,
+.tl-container,
+.tl-theme__light,
+.tl-theme__dark,
+.tl-background {
   --color-background: var(--page-background, #f8f9fa) !important;
-  background-color: var(--color-background) !important;
+  background-color: var(--page-background, #f8f9fa) !important;
 }
 
 .palette-swatches-grid {

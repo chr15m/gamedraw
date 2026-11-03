@@ -718,9 +718,15 @@
 
         React.useEffect(() => {
           if (!editor) return;
-          const unlisten = editor.on("change", () => setTick((t) => t + 1));
+          const unlistenStore = editor.store && typeof editor.store.listen === "function"
+            ? editor.store.listen(() => setTick((t) => t + 1))
+            : null;
+          const unlistenChange = editor.on
+            ? editor.on("change", () => setTick((t) => t + 1))
+            : null;
           return () => {
-            if (typeof unlisten === "function") unlisten();
+            if (typeof unlistenStore === "function") unlistenStore();
+            if (typeof unlistenChange === "function") unlistenChange();
           };
         }, [editor]);
 
@@ -751,6 +757,7 @@
                 onChange: (e) => {
                   if (window.setPagePalette) {
                     window.setPagePalette(e.target.value);
+                    setTick((t) => t + 1);
                   }
                 }
               },
@@ -767,6 +774,7 @@
                 onClick: () => {
                   if (window.togglePageDarkMode) {
                     window.togglePageDarkMode();
+                    setTick((t) => t + 1);
                   }
                 }
               },

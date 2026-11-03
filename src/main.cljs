@@ -552,28 +552,39 @@
 
 (declare set-current-active-color)
 
-(defn apply-page-visuals [editor]
-  (let [page (.getCurrentPage editor)]
-    (when page
-      (let [meta (or (.-meta page) #js {})
-            pal-id (or (aget meta "paletteId") "cc-29")
-            is-dark (boolean (aget meta "isDarkMode"))
-            pal (get palettes pal-id (get palettes "cc-29"))
-            extremes (get-palette-extremes pal)
-            bg-color (if is-dark (:bg-dark extremes) (:bg-light extremes))
-            fg-color (if is-dark (:lightest extremes) (:darkest extremes))
-            app-el (.getElementById js/document "app")]
-        (when (nil? (aget meta "paletteId"))
-          (let [new-meta (js/Object.assign #js {} meta #js {:paletteId "cc-29"
-                                                            :isDarkMode is-dark})]
-            (.updatePage editor #js {:id (.-id page) :meta new-meta})))
-        (when app-el
-          (.. app-el -style (setProperty "--color-background" bg-color "important"))
-          (.. app-el -style (setProperty "--page-background" bg-color "important")))
-        (when (and (.-user editor)
-                   (not= (.getIsDarkMode (.-user editor)) is-dark))
-          (.updateUserPreferences (.-user editor) #js {:isDarkMode is-dark}))
-        (set-current-active-color fg-color)))))
+(defn apply-page-visuals
+  ([editor]
+   (apply-page-visuals editor nil))
+  ([editor meta-override]
+   (let [page (.getCurrentPage editor)]
+     (when page
+       (let [meta (or meta-override (.-meta page) #js {})
+             pal-id (or (aget meta "paletteId") "cc-29")
+             is-dark (boolean (aget meta "isDarkMode"))
+             pal (get palettes pal-id (get palettes "cc-29"))
+             extremes (get-palette-extremes pal)
+             bg-color (if is-dark (:bg-dark extremes) (:bg-light extremes))
+             fg-color (if is-dark (:lightest extremes) (:darkest extremes))]
+         (when (and (nil? meta-override) (nil? (aget meta "paletteId")))
+           (let [new-meta (js/Object.assign #js {} meta #js {:paletteId "cc-29"
+                                                             :isDarkMode is-dark})]
+             (.updatePage editor #js {:id (.-id page) :meta new-meta})))
+         (when-let [root js/document.documentElement]
+           (.setProperty (.-style root) "--page-background" bg-color)
+           (.setProperty (.-style root) "--color-background" bg-color))
+         (when-let [app-el (.getElementById js/document "app")]
+           (.. app-el -style (setProperty "--page-background" bg-color "important"))
+           (.. app-el -style (setProperty "--color-background" bg-color "important")))
+         (doseq [el (array-seq (.querySelectorAll js/document ".tl-container, .tl-background"))]
+           (.. el -style (setProperty "--page-background" bg-color "important"))
+           (.. el -style (setProperty "--color-background" bg-color "important"))
+           (.. el -style (setProperty "background-color" bg-color "important")))
+         (when (and (.-user editor)
+                    (not= (.getIsDarkMode (.-user editor)) is-dark))
+           (.updateUserPreferences (.-user editor)
+             #js {:colorScheme (if is-dark "dark" "light")
+                  :isDarkMode is-dark}))
+         (set-current-active-color fg-color))))))
 
 (defn set-page-palette [pal-id]
   (when-let [editor (get-editor)]
@@ -581,16 +592,17 @@
           meta (or (.-meta page) #js {})
           new-meta (js/Object.assign #js {} meta #js {:paletteId pal-id})]
       (.updatePage editor #js {:id (.-id page) :meta new-meta})
-      (apply-page-visuals editor))))
+      (apply-page-visuals editor new-meta))))
 
 (defn toggle-page-dark-mode []
   (when-let [editor (get-editor)]
     (let [page (.getCurrentPage editor)
           meta (or (.-meta page) #js {})
           cur-dark (boolean (aget meta "isDarkMode"))
-          new-meta (js/Object.assign #js {} meta #js {:isDarkMode (not cur-dark)})]
+          new-dark (not cur-dark)
+          new-meta (js/Object.assign #js {} meta #js {:isDarkMode new-dark})]
       (.updatePage editor #js {:id (.-id page) :meta new-meta})
-      (apply-page-visuals editor))))
+      (apply-page-visuals editor new-meta))))
 
 (defn set-current-active-color [color-val]
   (reset! current-active-color-atom color-val)

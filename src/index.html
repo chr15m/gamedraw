@@ -179,7 +179,7 @@
       window.getIndices = getIndices;
       window.sortByIndex = sortByIndex;
 
-      window.addTraceImageToCanvas = (imgUrl, width, height) => {
+      window.addTraceImageToCanvas = (imgUrl, width, height, meta = {}) => {
         const editor = window.editor;
         if (!editor) return;
 
@@ -199,6 +199,7 @@
         const uniqueKey = Date.now() + "_" + Math.floor(Math.random() * 10000);
         const assetId = "asset:pin_" + uniqueKey;
         const shapeId = "shape:pin_" + uniqueKey;
+        const pinMeta = Object.assign({ isTrace: true }, meta || {});
 
         try {
           if (typeof editor.createAssets === "function") {
@@ -214,7 +215,7 @@
                 mimeType: "image/jpeg",
                 isAnimated: false
               },
-              meta: {}
+              meta: pinMeta
             }]);
           }
         } catch (err) {
@@ -227,7 +228,8 @@
           x: cx - targetW / 2,
           y: cy - targetH / 2,
           opacity: 0.5,
-          isLocked: true,
+          isLocked: false,
+          meta: pinMeta,
           props: {
             assetId: assetId,
             w: targetW,
@@ -238,6 +240,7 @@
         if (typeof editor.sendToBack === "function") {
           editor.sendToBack([shapeId]);
         }
+        editor.updateShape({ id: shapeId, type: "image", isLocked: true });
       };
 
       if (Polygon2d && !Polygon2d.prototype.getSegments) {

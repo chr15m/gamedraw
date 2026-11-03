@@ -201,9 +201,18 @@
             pin-js (clj->js pin)
             img-url (get-biggest-pin-url pin-js)
             img-w (or (get-in pin [:images :236x :width]) 600)
-            img-h (or (get-in pin [:images :236x :height]) 600)]
+            img-h (or (get-in pin [:images :236x :height]) 600)
+            bname (or (get-in pin [:board :name]) "")
+            burl (or (get-in pin [:board :url]) "")
+            meta-obj #js {:pinId (str (:id pin))
+                          :username (or @username-atom "")
+                          :boardName (as-name-str bname)
+                          :boardUrl burl
+                          :description (or (:description pin) "")
+                          :link (or (:link pin) "")
+                          :isTrace true}]
         (when-let [add-fn (.-addTraceImageToCanvas js/window)]
-          (add-fn img-url img-w img-h))
+          (add-fn img-url img-w img-h meta-obj))
         (reset! viewer-open-atom false)
         (render-ui!)))))
 

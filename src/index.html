@@ -1,11 +1,49 @@
 <!DOCTYPE html>
 <html lang="en-us">
   <head>
-    <title>Sprite Tool (tldraw)</title>
+    <title>SketchThing</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#171819">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <script>
+      (function() {
+        const logoSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><rect width="24" height="24" fill="#171819"/><path d="M4 15c2 -4.97 7.356 -11 9 -11c4.25 0 -5.5 11.958 -3 13s5.65 -6.678 7.4 -5.902c1.75 .777 -1.05 7.589 -.3 8.63s3.15 -.897 3.9 -2.728" fill="none" stroke="#E8E8E8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        const iconDataUrl = 'data:image/svg+xml;base64,' + btoa(logoSvg);
+
+        const iconLink = document.createElement('link');
+        iconLink.rel = 'icon';
+        iconLink.type = 'image/svg+xml';
+        iconLink.href = iconDataUrl;
+        document.head.appendChild(iconLink);
+
+        const appleIconLink = document.createElement('link');
+        appleIconLink.rel = 'apple-touch-icon';
+        appleIconLink.href = iconDataUrl;
+        document.head.appendChild(appleIconLink);
+
+        const manifest = {
+          name: 'SketchThing',
+          short_name: 'SketchThing',
+          display: 'standalone',
+          theme_color: '#171819',
+          background_color: '#171819',
+          start_url: window.location.href,
+          icons: [{
+            src: iconDataUrl,
+            sizes: 'any',
+            type: 'image/svg+xml'
+          }]
+        };
+
+        const manifestLink = document.createElement('link');
+        manifestLink.rel = 'manifest';
+        manifestLink.href = 'data:application/json;base64,' + btoa(JSON.stringify(manifest));
+        document.head.appendChild(manifestLink);
+      })();
+    </script>
     <link rel="stylesheet" href="https://esm.sh/tldraw/tldraw.css">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/scittle@latest/dist/scittle.min.js" type="application/javascript"></script>

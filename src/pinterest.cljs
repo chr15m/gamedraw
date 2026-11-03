@@ -302,28 +302,29 @@
     (when container
       (set! (.-innerHTML container) "")
 
-      ;; 1. Floating Toggle Button (Always visible on Canvas)
-      (let [toggle-btn (.createElement js/document "button")]
-        (set! (.-className toggle-btn) "pin-toggle-btn")
-        (set! (.-title toggle-btn) "Toggle Pinterest reference viewer")
-        (set! (.-innerHTML toggle-btn)
-              (str "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' "
-                   "stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>"
-                   "<rect width='18' height='18' x='3' y='3' rx='2' ry='2'/>"
-                   "<circle cx='9' cy='9' r='2'/>"
-                   "<path d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/>"
-                   "</svg><span>Ref</span>"))
-        (.addEventListener toggle-btn "click"
-          (fn [_]
-            (if (or (nil? @username-atom) (empty? @username-atom))
-              (do
-                (reset! settings-open-atom true)
-                (render-ui!))
-              (do
-                (reset! viewer-open-atom true)
-                (render-ui!)
-                (trigger-prefetch)))))
-        (.appendChild container toggle-btn))
+      ;; 1. Floating Toggle Button (Visible on Canvas when viewer is closed)
+      (when-not @viewer-open-atom
+        (let [toggle-btn (.createElement js/document "button")]
+          (set! (.-className toggle-btn) "pin-toggle-btn")
+          (set! (.-title toggle-btn) "Toggle Pinterest reference viewer")
+          (set! (.-innerHTML toggle-btn)
+                (str "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' "
+                     "stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>"
+                     "<rect width='18' height='18' x='3' y='3' rx='2' ry='2'/>"
+                     "<circle cx='9' cy='9' r='2'/>"
+                     "<path d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/>"
+                     "</svg><span>Ref</span>"))
+          (.addEventListener toggle-btn "click"
+            (fn [_]
+              (if (or (nil? @username-atom) (empty? @username-atom))
+                (do
+                  (reset! settings-open-atom true)
+                  (render-ui!))
+                (do
+                  (reset! viewer-open-atom true)
+                  (render-ui!)
+                  (trigger-prefetch)))))
+          (.appendChild container toggle-btn)))
 
       ;; 2. Settings Modal
       (when @settings-open-atom
@@ -392,8 +393,8 @@
 
           (set! (.-className overlay) "pin-viewer-overlay")
           (set! (.-className header) "pin-viewer-header")
-          (set! (.-className left-group) "pin-header-group")
-          (set! (.-className right-group) "pin-header-group")
+          (set! (.-className left-group) "pin-header-group pin-header-left")
+          (set! (.-className right-group) "pin-header-group pin-header-right")
 
           ;; Board selector
           (set! (.-className board-select) "pin-select")
@@ -443,31 +444,32 @@
           (.appendChild left-group counter-span)
 
           ;; Trace on canvas button
-          (set! (.-className trace-btn) "pin-btn pin-btn-primary")
+          (set! (.-className trace-btn) "pin-btn pin-btn-primary pin-btn-icon")
           (set! (.-innerHTML trace-btn)
-                (str "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' "
+                (str "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' "
                      "stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>"
-                     "<path d='M12 5v14M5 12h14'/></svg><span>Trace on Canvas</span>"))
-          (set! (.-title trace-btn) "Insert reference image onto drawing canvas")
+                     "<path d='M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4'/>"
+                     "<path d='M13.5 6.5l4 4'/></svg>"))
+          (set! (.-title trace-btn) "Trace on Canvas")
           (.addEventListener trace-btn "click"
             (fn [_] (trace-current-pin-on-canvas!)))
           (.appendChild right-group trace-btn)
 
           ;; Sync button
-          (set! (.-className sync-btn) "pin-btn")
+          (set! (.-className sync-btn) (str "pin-btn pin-btn-icon" (when @syncing-atom " pin-syncing")))
           (set! (.-innerHTML sync-btn)
-                (str "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' "
+                (str "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' "
                      "stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>"
                      "<path d='M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8'/>"
                      "<path d='M3 3v5h5'/><path d='M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16'/>"
-                     "<path d='M16 16h5v5'/></svg><span>"
-                     (if @syncing-atom "Syncing..." "Refresh") "</span>"))
+                     "<path d='M16 16h5v5'/></svg>"))
+          (set! (.-title sync-btn) (if @syncing-atom "Syncing..." "Refresh feed"))
           (.addEventListener sync-btn "click"
             (fn [_] (sync-feed! true)))
           (.appendChild right-group sync-btn)
 
           ;; Settings button
-          (set! (.-className settings-btn) "pin-btn")
+          (set! (.-className settings-btn) "pin-btn pin-btn-icon")
           (set! (.-innerHTML settings-btn)
                 (str "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' "
                      "stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>"
@@ -479,10 +481,10 @@
               (render-ui!)))
           (.appendChild right-group settings-btn)
 
-          ;; Close button
-          (set! (.-className close-btn) "pin-btn")
+          ;; Close button (positioned in exact same place as Ref button)
+          (set! (.-className close-btn) "pin-close-btn")
           (set! (.-innerHTML close-btn)
-                (str "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' "
+                (str "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' "
                      "stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>"
                      "<line x1='18' y1='6' x2='6' y2='18'/><line x1='6' y1='6' x2='18' y2='18'/></svg><span>Canvas</span>"))
           (set! (.-title close-btn) "Close viewer (Escape)")
@@ -490,7 +492,7 @@
             (fn [_]
               (reset! viewer-open-atom false)
               (render-ui!)))
-          (.appendChild right-group close-btn)
+          (.appendChild overlay close-btn)
 
           (.appendChild header left-group)
           (.appendChild header right-group)

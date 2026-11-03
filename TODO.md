@@ -2,11 +2,9 @@
 
 ## TODO
 
-- [x] Browse and import reference images from a Pinterest board
-
 - [ ] sync to nostr
 
-- [ ] Sometimes when "simplifying" it results in even more points
+- [ ] Bug: a single dot turns into a small circle after converting
 - [ ] Display size of current page definition stringified in kb in top right
 - [ ] Implement stroke and fill order toggle
 - [ ] Support custom palette import from hex lists (Lospec format)
@@ -14,6 +12,7 @@
 
 ## Done
 
+- [x] Browse and import reference images from a Pinterest board
 - [x] Ability to select palettes with CC-29 lospec as an option
 - [x] Pages should be dates and default to 'today' when loaded
 - [x] Persist pages to IndexedDb (idb-keyval)
@@ -21,6 +20,7 @@
 - [x] Ability to delete points easily
 - [x] Hide unnecessary default tools from toolbar (arrows, geo shapes, notes, frames, laser)
 - [x] Implement constant-width strokes (disable pressure variance for sprite drawing)
+- [x] Bug: sometimes when "simplifying" it results in even more points
 
 ## Maybe Later
 

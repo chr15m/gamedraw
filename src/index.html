@@ -434,7 +434,15 @@
         canEdit = () => false;
 
         getHandles(shape) {
-          const isEditing = editingLineId.get() === shape.id;
+          const editor = this.editor;
+          const currentTool = editor && typeof editor.getCurrentToolId === "function"
+            ? editor.getCurrentToolId()
+            : null;
+          const path = editor && typeof editor.getPath === "function"
+            ? editor.getPath()
+            : "";
+          const isInteractingWithHandle = path.includes("handle") || currentTool === "line";
+          const isEditing = editingLineId.get() === shape.id || isInteractingWithHandle;
           if (!isEditing) {
             return [];
           }

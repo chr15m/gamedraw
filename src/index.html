@@ -1074,6 +1074,12 @@
                   clearEditingLine();
                 }
               }
+              if (editor.getCurrentToolId() === "draw" && DefaultDashStyle) {
+                const curDash = editor.getStyleForNextShape(DefaultDashStyle);
+                if (curDash !== "solid") {
+                  editor.setStyleForNextShapes(DefaultDashStyle, "solid");
+                }
+              }
             });
             window.dispatchEvent(new CustomEvent("tldraw-ready", { detail: editor }));
           }

@@ -278,7 +278,10 @@
                                     :y (.-y s)
                                     :meta #js {:converted true}
                                     :props #js {:color line-color
-                                                :dash (or (.-dash props) "solid")
+                                                :dash (let [d (.-dash props)]
+                                                        (if (or (nil? d) (= d "draw"))
+                                                          "solid"
+                                                          d))
                                                 :size draw-size
                                                 :spline "cubic"
                                                 :points points-obj
@@ -751,6 +754,10 @@
             (try
               (ensure-today-page editor)
               (reset! last-page-id-atom (.getCurrentPageId editor))
+              (when (.-DefaultDashStyle js/window)
+                (try
+                  (.setStyleForNextShapes editor (.-DefaultDashStyle js/window) "solid")
+                  (catch :default _ nil)))
               (apply-page-visuals editor)
               (finally
                 (reset! is-restoring-atom false)))

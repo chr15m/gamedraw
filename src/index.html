@@ -197,18 +197,6 @@
           } finally {
             this._gettingHandles = false;
           }
-          const geom = this.getGeometry(shape);
-          const segments = geom && (geom.segments || (typeof geom.getSegments === "function" ? geom.getSegments() : null));
-          console.log("CustomLineShapeUtil.getHandles summary:", {
-            shapeId: shape.id,
-            isClosed: Boolean(shape.props && shape.props.isClosed),
-            knotCount: shape.props && shape.props.points ? Object.keys(shape.props.points).length : 0,
-            geomSegmentsCount: segments ? segments.length : 0,
-            handlesCount: handles ? handles.length : 0,
-            createHandles: handles
-              ? handles.filter((h) => h.type === "create").map((h) => ({ id: h.id, x: Math.round(h.x), y: Math.round(h.y) }))
-              : []
-          });
           return handles;
         }
 

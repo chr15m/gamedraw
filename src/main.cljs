@@ -147,7 +147,6 @@
                       (.push arr (str "a" (inc i))))
                     arr))
         points-map (js/Object.)]
-    (js/console.log "build-line-points: n:" n "indices-sample:" (.slice indices 0 5))
     (dotimes [i n]
       (let [idx (aget indices i)
             p (aget pts i)
@@ -183,71 +182,57 @@
                                 dim (or (.-dim seg) 3)]
                             (if (and b64 (.-path seg))
                               (.decodePoints b64 (.-path seg) dim)
-                              (.-points seg))))]
-            (js/console.log "convert-finished-draw: geom inspect:"
-                            #js {:class (and geom (.. geom -constructor -name))
-                                 :keys (and geom (js/Object.keys geom))
-                                 :geom-pts-count (and geom-pts (.-length geom-pts))
-                                 :geom-pts-start (and geom-pts (.slice geom-pts 0 4))
-                                 :geom-pts-end (and geom-pts (.slice geom-pts (js/Math.max 0 (- (.-length geom-pts) 4))))
-                                 :raw-pts-count (and raw-pts (.-length raw-pts))
-                                 :raw-pts-start (and raw-pts (.slice raw-pts 0 4))
-                                 :raw-pts-end (and raw-pts (.slice raw-pts (js/Math.max 0 (- (.-length raw-pts) 4))))})
-            (let [pts (if (and geom-pts (> (.-length geom-pts) 1))
-                        geom-pts
-                        raw-pts)]
-              (when (and pts (> (.-length pts) 1))
-                (let [p-start (aget pts 0)
-                      p-end (aget pts (dec (.-length pts)))
-                      start-x (or (.-x p-start) (aget p-start 0) 0)
-                      start-y (or (.-y p-start) (aget p-start 1) 0)
-                      end-x (or (.-x p-end) (aget p-end 0) 0)
-                      end-y (or (.-y p-end) (aget p-end 1) 0)
-                      dist (js/Math.hypot (- end-x start-x) (- end-y start-y))
-                      seg-closed? (boolean (and segments (> (.-length segments) 0) (.-isClosed (aget segments 0))))
-                      is-closed? (and (> (.-length pts) 2)
-                                      (or seg-closed? (<= dist 16.0)))
-                      filtered (filter-min-dist pts 1.5)
-                      _ (when is-closed?
-                          (when (< (.-length filtered) 3)
-                            (let [p0 (aget filtered 0)
-                                  p1 (aget filtered (dec (.-length filtered)))
-                                  mid #js {:x (/ (+ (or (.-x p0) 0) (or (.-x p1) 0)) 2.0)
-                                           :y (/ (+ (or (.-y p0) 0) (or (.-y p1) 0)) 2.0)
-                                           :z 0.5}]
-                              (.splice filtered 1 0 mid)))
-                          (let [first-p (aget filtered 0)
-                                last-idx (dec (.-length filtered))]
-                            (aset filtered last-idx
-                                  #js {:x (or (.-x first-p) 0)
-                                       :y (or (.-y first-p) 0)
-                                       :z (or (.-z first-p) 0.5)})))
-                      points-obj (build-line-points filtered)
-                      line-id (str "shape:line_" (js/Math.random))
-                      draw-size (or (.-size props) "m")
-                      draw-scale (or (.-scale props) 1)
-                      line-scale (* draw-scale (size->line-scale draw-size))
-                      line-fill (if is-closed? active-fill "none")
-                      line-shape #js {:id line-id
-                                      :type "line"
-                                      :x (.-x s)
-                                      :y (.-y s)
-                                      :meta #js {:converted true}
-                                      :props #js {:color (or (.-color props) "black")
-                                                  :dash (or (.-dash props) "solid")
-                                                  :size draw-size
-                                                  :spline "cubic"
-                                                  :points points-obj
-                                                  :scale line-scale
-                                                  :isClosed is-closed?
-                                                  :fill line-fill}}]
-                  (js/console.log "convert-finished-draw: converted shape to line:"
-                                  "pts:" (.-length pts) "->" (.-length filtered)
-                                  "line-id:" line-id
-                                  "isClosed:" is-closed?
-                                  "fill:" line-fill)
-                  (.createShapes editor #js [line-shape])
-                  (.deleteShapes editor #js [(.-id s)]))))))))))
+                              (.-points seg))))
+                pts (if (and geom-pts (> (.-length geom-pts) 1))
+                      geom-pts
+                      raw-pts)]
+            (when (and pts (> (.-length pts) 1))
+              (let [p-start (aget pts 0)
+                    p-end (aget pts (dec (.-length pts)))
+                    start-x (or (.-x p-start) (aget p-start 0) 0)
+                    start-y (or (.-y p-start) (aget p-start 1) 0)
+                    end-x (or (.-x p-end) (aget p-end 0) 0)
+                    end-y (or (.-y p-end) (aget p-end 1) 0)
+                    dist (js/Math.hypot (- end-x start-x) (- end-y start-y))
+                    seg-closed? (boolean (and segments (> (.-length segments) 0) (.-isClosed (aget segments 0))))
+                    is-closed? (and (> (.-length pts) 2)
+                                    (or seg-closed? (<= dist 16.0)))
+                    filtered (filter-min-dist pts 1.5)
+                    _ (when is-closed?
+                        (when (< (.-length filtered) 3)
+                          (let [p0 (aget filtered 0)
+                                p1 (aget filtered (dec (.-length filtered)))
+                                mid #js {:x (/ (+ (or (.-x p0) 0) (or (.-x p1) 0)) 2.0)
+                                         :y (/ (+ (or (.-y p0) 0) (or (.-y p1) 0)) 2.0)
+                                         :z 0.5}]
+                            (.splice filtered 1 0 mid)))
+                        (let [first-p (aget filtered 0)
+                              last-idx (dec (.-length filtered))]
+                          (aset filtered last-idx
+                                #js {:x (or (.-x first-p) 0)
+                                     :y (or (.-y first-p) 0)
+                                     :z (or (.-z first-p) 0.5)})))
+                    points-obj (build-line-points filtered)
+                    line-id (str "shape:line_" (js/Math.random))
+                    draw-size (or (.-size props) "m")
+                    draw-scale (or (.-scale props) 1)
+                    line-scale (* draw-scale (size->line-scale draw-size))
+                    line-fill (if is-closed? active-fill "none")
+                    line-shape #js {:id line-id
+                                    :type "line"
+                                    :x (.-x s)
+                                    :y (.-y s)
+                                    :meta #js {:converted true}
+                                    :props #js {:color (or (.-color props) "black")
+                                                :dash (or (.-dash props) "solid")
+                                                :size draw-size
+                                                :spline "cubic"
+                                                :points points-obj
+                                                :scale line-scale
+                                                :isClosed is-closed?
+                                                :fill line-fill}}]
+                (.createShapes editor #js [line-shape])
+                (.deleteShapes editor #js [(.-id s)])))))))))
 
 (defn calc-avg-dist [pts]
   (let [n (.-length pts)]
@@ -270,25 +255,8 @@
               y (if (number? (.-y p)) (.-y p) (aget p 1))
               z (or (.-z p) 0.5)]
           (.push pts-objs #js {:x x :y y :z z})))
-      (let [avg-dist (calc-avg-dist pts-objs)
-            simplified (js/simplify pts-objs tolerance true)
+      (let [simplified (js/simplify pts-objs tolerance true)
             res (js/Array.)]
-        (let [xs (.map pts-objs (fn [p] (.-x p)))
-              ys (.map pts-objs (fn [p] (.-y p)))
-              bounds #js {:minX (js/Math.min.apply nil xs)
-                          :maxX (js/Math.max.apply nil xs)
-                          :minY (js/Math.min.apply nil ys)
-                          :maxY (js/Math.max.apply nil ys)}]
-          (js/console.log "simplify-segment-points: tolerance:" tolerance
-                          "points:" (.-length pts-objs) "->" (.-length simplified)
-                          "avg-dist:" avg-dist
-                          "bounds:" bounds
-                          "orig-start:" (.slice pts-objs 0 3)
-                          "orig-end:" (.slice pts-objs
-                                              (js/Math.max 0 (- (.-length pts-objs) 3)))
-                          "simp-start:" (.slice simplified 0 3)
-                          "simp-end:" (.slice simplified
-                                              (js/Math.max 0 (- (.-length simplified) 3)))))
         (doseq [p simplified]
           (.push res #js {:x (.-x p) :y (.-y p) :z (or (.-z p) 0.5)}))
         res))
@@ -373,12 +341,8 @@
 
 (defn line-shape->points [s]
   (let [pts-obj (.. s -props -points)
-        vals (if pts-obj (js/Object.values pts-obj) (js/Array.))
-        sorted (.sort vals compare-by-index)]
-    (js/console.log "line-shape->points: keys count:" (.-length vals)
-                    "indices-sample:" (.map (.slice sorted 0 5) (fn [p] (.-index p)))
-                    "pts-sample:" (.slice sorted 0 3))
-    sorted))
+        vals (if pts-obj (js/Object.values pts-obj) (js/Array.))]
+    (.sort vals compare-by-index)))
 
 (defn simplify-selected-lines []
   (when-let [editor (get-editor)]
@@ -403,10 +367,6 @@
                     new-pts-obj (build-line-points tightened)
                     new-props (js/Object.assign #js {} (.-props s)
                                                 #js {:points new-pts-obj})]
-                (js/console.log "simplify-selected-lines (line):"
-                                (.-length pts) "->" (.-length simplified)
-                                "tightened:" (.-length tightened)
-                                "tolerance:" tolerance)
                 (.push updates #js {:id (.-id s)
                                     :type (.-type s)
                                     :props new-props}))))
@@ -420,23 +380,13 @@
               (let [dim (or (.-dim seg) 3)
                     raw-pts (if (and b64 (.-path seg))
                               (.decodePoints b64 (.-path seg) dim)
-                              (.-points seg))]
-                (when (and b64 (.-path seg) raw-pts (> (.-length raw-pts) 1))
-                  (let [p0 (aget raw-pts 0)
-                        pn (aget raw-pts (dec (.-length raw-pts)))
-                        roundtrip (.decodePoints b64 (.encodePoints b64 raw-pts dim) dim)
-                        rt-pn (aget roundtrip (dec (.-length roundtrip)))]
-                    (js/console.log "simplify debug: raw-pts count:" (.-length raw-pts)
-                                    "p0:" p0 "pn:" pn
-                                    "roundtrip-pn:" rt-pn)))
-                (let [simplified (simplify-segment-points raw-pts tolerance)
-                      new-seg (if (and b64 (.-path seg))
-                                (let [new-path (.encodePoints b64 simplified dim)]
-                                  (js/console.log "simplify-selected-lines: re-encoded segment path length:"
-                                                  (.-length (.-path seg)) "->" (.-length new-path))
-                                  (js/Object.assign #js {} seg #js {:path new-path}))
-                                (js/Object.assign #js {} seg #js {:points simplified}))]
-                  (.push new-segments new-seg))))
+                              (.-points seg))
+                    simplified (simplify-segment-points raw-pts tolerance)
+                    new-seg (if (and b64 (.-path seg))
+                              (let [new-path (.encodePoints b64 simplified dim)]
+                                (js/Object.assign #js {} seg #js {:path new-path}))
+                              (js/Object.assign #js {} seg #js {:points simplified}))]
+                (.push new-segments new-seg)))
             (let [new-props (js/Object.assign #js {} (.-props s) #js {:segments new-segments})]
               (.push updates #js {:id (.-id s) :type (.-type s) :props new-props})))))
       (when (> (.-length updates) 0)
@@ -464,7 +414,6 @@
                                                   #js {:isClosed false
                                                        :fill (or cur-fill "none")
                                                        :points new-pts-obj})]
-                  (js/console.log "toggle-selected-lines-closed: opening line:" (.-id s))
                   (.push updates #js {:id (.-id s) :type (.-type s) :props new-props}))
 
                 (let [p0 (aget pts 0)
@@ -481,7 +430,6 @@
                                                   #js {:isClosed true
                                                        :fill new-fill
                                                        :points new-pts-obj})]
-                  (js/console.log "toggle-selected-lines-closed: closing line:" (.-id s) "fill:" new-fill)
                   (.push updates #js {:id (.-id s) :type (.-type s) :props new-props})))))))
       (when (> (.-length updates) 0)
         (.updateShapes editor updates)))))
@@ -498,7 +446,6 @@
             (if cur-closed?
               (let [new-props (js/Object.assign #js {} (.-props s)
                                                 #js {:fill new-fill})]
-                (js/console.log "toggle-selected-lines-fill:" (.-id s) "fill:" new-fill)
                 (.push updates #js {:id (.-id s) :type (.-type s) :props new-props}))
               (let [pts (line-shape->points s)
                     n (.-length pts)]
@@ -516,7 +463,6 @@
                                                     #js {:isClosed true
                                                          :fill "solid"
                                                          :points new-pts-obj})]
-                    (js/console.log "toggle-selected-lines-fill: closed and filled line:" (.-id s))
                     (.push updates #js {:id (.-id s) :type (.-type s) :props new-props}))))))))
       (when (> (.-length updates) 0)
         (.updateShapes editor updates)))))

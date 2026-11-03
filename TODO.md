@@ -1,3 +1,11 @@
+- [x] Ability to select palettes with CC-29 lospec as an option
+- [x] Pages should be dates and default to 'today' when loaded
+- [x] Persist pages to IndexedDb (idb-keyval)
+- [ ] ability to select images from a pinterest account
+
+- [ ] sync to nostr
+
+
 - [x] Implement line simplification for tldraw draw shapes (decode and encode b64Vecs with simplify-js)
 - [ ] Ability to delete points easily
 - [ ] Sometimes when "simplifying" it results in even more points

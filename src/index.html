@@ -11,6 +11,7 @@
     <script src="https://cdn.jsdelivr.net/npm/scittle@latest/dist/scittle.min.js" type="application/javascript"></script>
     <script src="https://cdn.jsdelivr.net/npm/scittle@latest/dist/scittle.promesa.min.js" type="application/javascript"></script>
     <script src="https://cdn.jsdelivr.net/npm/simplify-js@1.2.4/simplify.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js"></script>
     <script type="importmap">
       {
         "imports": {
@@ -24,6 +25,11 @@
       import React from "react";
       import { createRoot } from "react-dom/client";
       import * as tldraw from "https://esm.sh/tldraw";
+      import * as idbKeyvalModule from "https://cdn.jsdelivr.net/npm/idb-keyval@6/+esm";
+
+      if (!window.idbKeyval) {
+        window.idbKeyval = idbKeyvalModule;
+      }
 
       const {
         Tldraw,
@@ -57,8 +63,53 @@
         Polygon2d,
         SVGContainer,
         STROKE_SIZES,
-        T
+        T,
+        getSnapshot,
+        loadSnapshot
       } = tldraw;
+
+      window.getEditorSnapshot = (target) => {
+        if (!target) return null;
+        const store = target.store || target;
+        try {
+          if (typeof getSnapshot === "function") {
+            return getSnapshot(store);
+          }
+          if (typeof target.getSnapshot === "function") {
+            return target.getSnapshot();
+          }
+          if (typeof store.getSnapshot === "function") {
+            return store.getSnapshot();
+          }
+          if (store && typeof store.getStoreSnapshot === "function") {
+            return { document: store.getStoreSnapshot() };
+          }
+        } catch (err) {
+          throw err;
+        }
+        return null;
+      };
+
+      window.loadEditorSnapshot = (target, snapshot) => {
+        if (!target || !snapshot) return;
+        const store = target.store || target;
+        try {
+          if (typeof loadSnapshot === "function") {
+            loadSnapshot(store, snapshot);
+            return;
+          }
+          if (typeof target.loadSnapshot === "function") {
+            target.loadSnapshot(snapshot);
+            return;
+          }
+          if (typeof store.loadSnapshot === "function") {
+            store.loadSnapshot(snapshot.document || snapshot);
+            return;
+          }
+        } catch (err) {
+          throw err;
+        }
+      };
 
       const CustomColorStyle = StyleProp && StyleProp.define
         ? StyleProp.define("sprite:color", {

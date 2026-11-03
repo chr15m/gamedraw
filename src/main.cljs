@@ -3,6 +3,10 @@
 (defonce editor-atom (atom nil))
 (defonce last-page-id-atom (atom nil))
 (defonce current-active-color-atom (atom nil))
+(defonce initialized-editor-atom (atom nil))
+(defonce is-restoring-atom (atom false))
+(defonce save-timer-atom (atom nil))
+(def storage-key "sprite-tool-pages")
 
 (def palettes
   {"cc-29"
@@ -587,6 +591,8 @@
          (when (nil? @current-active-color-atom)
            (set-current-active-color (:darkest extremes))))))))
 
+(declare schedule-save)
+
 (defn set-page-palette [pal-id]
   (when-let [editor (get-editor)]
     (let [page (.getCurrentPage editor)
@@ -600,7 +606,8 @@
           new-meta (js/Object.assign #js {} meta #js {:paletteId pal-id
                                                       :backgroundColor new-bg})]
       (.updatePage editor #js {:id (.-id page) :meta new-meta})
-      (apply-page-visuals editor new-meta))))
+      (apply-page-visuals editor new-meta)
+      (schedule-save editor))))
 
 (defn set-page-background-color [bg-color]
   (when-let [editor (get-editor)]
@@ -608,7 +615,8 @@
           meta (or (.-meta page) #js {})
           new-meta (js/Object.assign #js {} meta #js {:backgroundColor bg-color})]
       (.updatePage editor #js {:id (.-id page) :meta new-meta})
-      (apply-page-visuals editor new-meta))))
+      (apply-page-visuals editor new-meta)
+      (schedule-save editor))))
 
 (defn set-current-active-color [color-val]
   (reset! current-active-color-atom color-val)
@@ -666,18 +674,104 @@
 (set! (.-setCurrentActiveColor js/window) set-current-active-color)
 (set! (.-getCurrentActiveColor js/window) get-current-active-color)
 
+(defn today-date-str []
+  (let [now (js/Date.)
+        y (.getFullYear now)
+        m (.padStart (str (inc (.getMonth now))) 2 "0")
+        d (.padStart (str (.getDate now)) 2 "0")]
+    (str y "-" m "-" d)))
+
+(defn ensure-today-page [editor]
+  (let [today-str (today-date-str)
+        cur-page (.getCurrentPage editor)
+        cur-name (and cur-page (.-name cur-page))]
+    (when (not= cur-name today-str)
+      (let [all-pages (.getPages editor)
+            existing-today (first (filter (fn [p] (= (.-name p) today-str)) (array-seq all-pages)))]
+        (if existing-today
+          (.setCurrentPage editor (.-id existing-today))
+          (let [cur-shapes (.getCurrentPageShapes editor)
+                can-rename? (and (= cur-name "Page 1")
+                                 (= (.-length cur-shapes) 0))]
+            (if can-rename?
+              (.renamePage editor (.-id cur-page) today-str)
+              (let [new-page-id (.createPage editor #js {:name today-str})]
+                (.setCurrentPage editor new-page-id)))))))))
+
+(defn save-to-indexeddb [editor]
+  (when (and editor (not @is-restoring-atom))
+    (when-let [get-snap (or (.-getEditorSnapshot js/window)
+                            (.-getSnapshot js/window))]
+      (try
+        (let [target (or (.-store editor) editor)
+              snap (get-snap target)]
+          (when snap
+            (when-let [idb (.-idbKeyval js/window)]
+              (-> (.set idb storage-key snap)
+                  (.catch (fn [err]
+                            (js/console.error "IndexedDB save failed:" err)))))))
+        (catch :default err
+          (js/console.error "save-to-indexeddb caught error:" err))))))
+
+(defn schedule-save [editor]
+  (when (and editor (not @is-restoring-atom))
+    (when-let [timer @save-timer-atom]
+      (js/clearTimeout timer))
+    (reset! save-timer-atom
+            (js/setTimeout
+             (fn []
+               (reset! save-timer-atom nil)
+               (save-to-indexeddb editor))
+             500))))
+
+(defonce _unload-listener
+  (.addEventListener js/window "beforeunload"
+    (fn [_]
+      (when-let [editor (get-editor)]
+        (when @save-timer-atom
+          (js/clearTimeout @save-timer-atom)
+          (reset! save-timer-atom nil)
+          (save-to-indexeddb editor))))))
+
 (defn handle-editor-change [editor]
   (sync-line-sizes editor)
   (let [cur-page-id (.getCurrentPageId editor)]
     (when (not= cur-page-id @last-page-id-atom)
       (reset! last-page-id-atom cur-page-id)
-      (apply-page-visuals editor))))
+      (apply-page-visuals editor)))
+  (schedule-save editor))
 
 (defn init-editor-listeners [editor]
-  (reset! editor-atom editor)
-  (reset! last-page-id-atom (.getCurrentPageId editor))
-  (apply-page-visuals editor)
-  (.on editor "change" (fn [_] (handle-editor-change editor))))
+  (when (and editor (not= @initialized-editor-atom editor))
+    (reset! initialized-editor-atom editor)
+    (reset! editor-atom editor)
+    (reset! is-restoring-atom true)
+    (let [finish-init
+          (fn []
+            (try
+              (ensure-today-page editor)
+              (reset! last-page-id-atom (.getCurrentPageId editor))
+              (apply-page-visuals editor)
+              (finally
+                (reset! is-restoring-atom false)))
+            (.on editor "change" (fn [_] (handle-editor-change editor))))]
+      (if-let [idb (.-idbKeyval js/window)]
+        (-> (.get idb storage-key)
+            (.then (fn [saved]
+                     (when saved
+                       (try
+                         (let [load-fn (or (.-loadEditorSnapshot js/window)
+                                           (.-loadSnapshot js/window))]
+                           (if load-fn
+                             (load-fn (or (.-store editor) editor) saved)
+                             (.loadSnapshot editor saved)))
+                         (catch :default err
+                           (js/console.error "Error restoring snapshot from IndexedDB:" err))))
+                     (finish-init)))
+            (.catch (fn [err]
+                      (js/console.error "IndexedDB load failed:" err)
+                      (finish-init))))
+        (finish-init)))))
 
 (defonce _ready-listener
   (.addEventListener js/window "tldraw-ready"

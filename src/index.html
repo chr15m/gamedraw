@@ -1041,11 +1041,21 @@
         );
       }
 
+      let licenseKey = undefined;
+      try {
+        const keyRes = await fetch("./key.txt");
+        if (keyRes.ok) {
+          const keyText = (await keyRes.text()).trim();
+          if (keyText) licenseKey = keyText;
+        }
+      } catch (_) {}
+
       const container = document.getElementById("app");
       const root = createRoot(container);
 
       root.render(
         React.createElement(Tldraw, {
+          licenseKey: licenseKey,
           options: {
             createTextOnCanvasDoubleClick: false
           },

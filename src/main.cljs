@@ -1,790 +1,941 @@
-(ns main)
+;; SketchThing -- native SVG canvas rebuild (Scittle + Reagent).
+;; Single source of truth in `app`. See SVG_REBUILD_SPEC.md.
+(ns main
+  (:require [reagent.core :as r]
+            [reagent.dom :as rdom]
+            [clojure.string :as str]))
 
-(defonce editor-atom (atom nil))
-(defonce last-page-id-atom (atom nil))
-(defonce current-active-color-atom (atom nil))
-(defonce initialized-editor-atom (atom nil))
-(defonce is-restoring-atom (atom false))
-(defonce save-timer-atom (atom nil))
-(def storage-key "sprite-tool-pages")
+;; ---------------------------------------------------------------------------
+;; Constants
+;; ---------------------------------------------------------------------------
+
+(def cc-29
+  ["#f2f0e5" "#b8b5b9" "#868188" "#646365" "#45444f" "#3a3858"
+   "#212123" "#352b42" "#43436a" "#4b80ca" "#68c2d3" "#a2dcc7"
+   "#ede19e" "#d3a068" "#b45252" "#6a536e" "#4b4158" "#80493a"
+   "#a77b5b" "#e5ceb4" "#c2d368" "#8ab060" "#567b79" "#4e584a"
+   "#7b7243" "#b2b47e" "#edc8c4" "#cf8acb" "#5f556a"])
+
+(def named-colors
+  [["black" "#1d1d1d"] ["grey" "#adb5bd"] ["light-violet" "#e3d5f5"]
+   ["violet" "#ae3ec9"] ["blue" "#4465e9"] ["light-blue" "#4ba1f4"]
+   ["yellow" "#f1c40f"] ["orange" "#f39c12"] ["green" "#099268"]
+   ["light-green" "#40c057"] ["light-red" "#ff8787"] ["red" "#e03131"]])
 
 (def palettes
-  {"cc-29"
-   {:id "cc-29"
-    :name "CC-29"
-    :type "hex"
-    :colors ["#f2f0e5" "#b8b5b9" "#868188" "#646365" "#45444f" "#3a3858"
-             "#212123" "#352b42" "#43436a" "#4b80ca" "#68c2d3" "#a2dcc7"
-             "#ede19e" "#d3a068" "#b45252" "#6a536e" "#4b4158" "#80493a"
-             "#a77b5b" "#e5ceb4" "#c2d368" "#8ab060" "#567b79" "#4e584a"
-             "#7b7243" "#b2b47e" "#edc8c4" "#cf8acb" "#5f556a"]}
-   "tldraw"
-   {:id "tldraw"
-    :name "Default (tldraw)"
-    :type "named"
-    :colors ["black" "grey" "light-violet" "violet" "blue" "light-blue"
-             "yellow" "orange" "green" "light-green" "light-red" "red"]}})
+  [{:id "cc-29" :name "CC-29" :colors (vec cc-29)}
+   {:id "tldraw" :name "Default (tldraw)" :colors (mapv second named-colors)}])
 
-(defn hex->rgb [hex]
-  (let [clean (if (= (.charAt hex 0) "#") (.slice hex 1) hex)
-        num (js/parseInt clean 16)]
-    [(bit-and (bit-shift-right num 16) 255)
-     (bit-and (bit-shift-right num 8) 255)
-     (bit-and num 255)]))
+(def size-order [["s" 2] ["m" 3.5] ["l" 5] ["xl" 10]])
+(def sizes (into {} size-order))
 
-(defn rgb->luminance [[r g b]]
-  (+ (* 0.2126 r) (* 0.7152 g) (* 0.0722 b)))
+;; ---------------------------------------------------------------------------
+;; State
+;; ---------------------------------------------------------------------------
 
-(defn get-palette-extremes [pal]
-  (if (= (:type pal) "named")
-    {:lightest "grey"
-     :darkest "black"
-     :bg-light "#f8f9fa"
-     :bg-dark "#1e1e1e"}
-    (let [colors (:colors pal)
-          sorted (sort-by (fn [c] (rgb->luminance (hex->rgb c))) colors)
-          darkest (first sorted)
-          lightest (last sorted)]
-      {:lightest lightest
-       :darkest darkest
-       :bg-light lightest
-       :bg-dark darkest})))
+(defn today-str []
+  (let [d (js/Date.)
+        pad (fn [n] (.padStart (str n) 2 "0"))]
+    (str (.getFullYear d) "-" (pad (inc (.getMonth d))) "-" (pad (.getDate d)))))
 
-(defn get-editor []
-  (or @editor-atom js/window.editor))
+(defonce app
+  (r/atom
+   {:tool :draw
+    :viewport {:x 0.0 :y 0.0 :zoom 1.0}
+    :palette {:palette-id "cc-29" :color "#212123" :bg "#f2f0e5" :bg-mode false}
+    :size "m"
+    :fill "none"
+    :drawing []
+    :eraser []
+    :shapes []
+    :selection #{}
+    :edit-id nil
+    :history []
+    :future []
+    :page (today-str)
+    :trace nil
+    :pan nil
+    :marquee nil
+    :drag nil}))
 
-(defn thickness->size [t]
-  (case t
-    1 "s"
-    3 "m"
-    5 "l"
-    10 "xl"
-    "m"))
+(defonce canvas-el (atom nil))
+(defonce active-pointers (atom {}))
+(defonce pinch (atom nil))
+(defonce save-timer (atom nil))
 
-(defn size->line-scale [size-str]
-  (case size-str
-    "s" (/ 3.0 2.0)
-    "m" (/ 4.5 3.5)
-    "l" (/ 6.0 5.0)
-    "xl" (/ 11.0 10.0)
-    1.0))
+;; ---------------------------------------------------------------------------
+;; Geometry
+;; ---------------------------------------------------------------------------
 
-(defn sync-line-sizes [editor]
-  (let [selected (.getSelectedShapes editor)
-        updates (js/Array.)]
-    (doseq [s selected]
-      (when (= (.-type s) "line")
-        (let [cur-size (.. s -props -size)
-              cur-scale (or (.. s -props -scale) 1.0)
-              expected-scale (size->line-scale cur-size)]
-          (when (> (js/Math.abs (- cur-scale expected-scale)) 0.001)
-            (let [new-props (js/Object.assign #js {} (.-props s) #js {:scale expected-scale})]
-              (.push updates #js {:id (.-id s) :type (.-type s) :props new-props}))))))
-    (when (> (.-length updates) 0)
-      (.updateShapes editor updates))))
+(defn gen-id [] (str "shape:" (.now js/Date) "-" (rand-int 1000000)))
 
-(defn set-thickness [t]
-  (when-let [editor (get-editor)]
-    (let [size-str (thickness->size t)
-          selected-shapes (.getSelectedShapes editor)
-          updates (js/Array.)]
-      (doseq [s selected-shapes]
-        (cond
-          (= (.-type s) "draw")
-          (let [new-props (js/Object.assign #js {} (.-props s) #js {:size size-str})]
-            (.push updates #js {:id (.-id s) :type (.-type s) :props new-props}))
-          (= (.-type s) "line")
-          (let [new-props (js/Object.assign #js {} (.-props s)
-                                           #js {:size size-str
-                                                :scale (size->line-scale size-str)})]
-            (.push updates #js {:id (.-id s) :type (.-type s) :props new-props}))))
-      (when (> (.-length updates) 0)
-        (.updateShapes editor updates)))))
+(defn mid [a b] {:x (/ (+ (:x a) (:x b)) 2.0) :y (/ (+ (:y a) (:y b)) 2.0)})
 
-(defn duplicate-in-place []
-  (when-let [editor (get-editor)]
-    (let [selected-shapes (.getSelectedShapes editor)]
-      (when (> (.-length selected-shapes) 0)
-        (try
-          (.duplicateShapes editor selected-shapes #js {:x 0 :y 0})
-          (catch :default _
-            (let [new-shapes (js/Array.)
-                  new-ids (js/Array.)]
-              (doseq [s selected-shapes]
-                (let [new-id (str "shape:" (js/Math.random))
-                      clone (js/Object.assign #js {} s #js {:id new-id})]
-                  (.push new-shapes clone)
-                  (.push new-ids new-id)))
-              (.createShapes editor new-shapes)
-              (.setSelectedShapes editor new-ids))))))))
+(defn path-d [pts closed?]
+  (let [pts (vec pts) n (count pts)]
+    (cond
+      (zero? n) ""
+      (= n 1) (str "M " (:x (first pts)) " " (:y (first pts)))
+      :else
+      (str "M " (:x (first pts)) " " (:y (first pts))
+           (apply str
+                  (for [i (range 1 n)]
+                    (let [p (nth pts i)]
+                      (if (< i (dec n))
+                        (let [m (mid p (nth pts (inc i)))]
+                          (str " Q " (:x p) " " (:y p) " " (:x m) " " (:y m)))
+                        (str " L " (:x p) " " (:y p))))))
+           (when closed? " Z")))))
 
+(defn shape-segments [s]
+  (let [pts (:points s)]
+    (if (and (:is-closed s) (> (count pts) 2))
+      (concat (map vector pts (rest pts)) [[(last pts) (first pts)]])
+      (map vector pts (rest pts)))))
 
-(defn pt-dist [p1 p2]
-  (let [dx (- (or (.-x p2) 0) (or (.-x p1) 0))
-        dy (- (or (.-y p2) 0) (or (.-y p1) 0))]
-    (js/Math.hypot dx dy)))
+(defn shape-bbox [s]
+  (let [pts (:points s)]
+    {:x1 (apply min (map :x pts)) :y1 (apply min (map :y pts))
+     :x2 (apply max (map :x pts)) :y2 (apply max (map :y pts))}))
 
-(defn eval-quadratic-bezier [p0 p1 p2 t]
-  (let [inv (- 1.0 t)
-        inv2 (* inv inv)
-        two-inv-t (* 2.0 inv t)
-        t2 (* t t)
-        x0 (or (.-x p0) 0) y0 (or (.-y p0) 0)
-        x1 (or (.-x p1) 0) y1 (or (.-y p1) 0)
-        x2 (or (.-x p2) 0) y2 (or (.-y p2) 0)
-        z (or (.-z p1) 0.5)]
-    #js {:x (+ (* inv2 x0) (* two-inv-t x1) (* t2 x2))
-         :y (+ (* inv2 y0) (* two-inv-t y1) (* t2 y2))
-         :z z}))
+(defn selection-bbox [shapes sel]
+  (let [ss (filter #(contains? sel (:id %)) shapes)]
+    (when (seq ss)
+      (let [bs (map shape-bbox ss)]
+        {:x1 (apply min (map :x1 bs)) :y1 (apply min (map :y1 bs))
+         :x2 (apply max (map :x2 bs)) :y2 (apply max (map :y2 bs))}))))
 
-(defn subdivide-quadratic-points [pts max-dist]
-  (let [n (.-length pts)]
-    (if (< n 3)
-      pts
-      (let [res (js/Array.)
-            p0 (aget pts 0)
-            _ (.push res p0)]
-        (dotimes [i (- n 2)]
-          (let [p-curr (aget pts i)
-                p-next (aget pts (inc i))
-                p-after (aget pts (+ i 2))
-                m-curr (if (zero? i)
-                         p-curr
-                         #js {:x (/ (+ (or (.-x p-curr) 0) (or (.-x p-next) 0)) 2.0)
-                              :y (/ (+ (or (.-y p-curr) 0) (or (.-y p-next) 0)) 2.0)
-                              :z (or (.-z p-next) 0.5)})
-                m-next #js {:x (/ (+ (or (.-x p-next) 0) (or (.-x p-after) 0)) 2.0)
-                            :y (/ (+ (or (.-y p-next) 0) (or (.-y p-after) 0)) 2.0)
-                            :z (or (.-z p-next) 0.5)}
-                d (pt-dist m-curr m-next)]
-            (if (> d max-dist)
-              (let [steps (js/Math.ceil (/ d max-dist))]
-                (dotimes [s (dec steps)]
-                  (let [t (/ (inc s) steps)]
-                    (.push res (eval-quadratic-bezier m-curr p-next m-next t))))
-                (.push res m-next))
-              (.push res p-next))))
-        (.push res (aget pts (dec n)))
-        res))))
+(defn pt-seg-dist [p a b]
+  (let [vx (- (:x b) (:x a)) vy (- (:y b) (:y a))
+        wx (- (:x p) (:x a)) wy (- (:y p) (:y a))
+        len2 (+ (* vx vx) (* vy vy))
+        t (if (zero? len2) 0.0 (max 0.0 (min 1.0 (/ (+ (* wx vx) (* wy vy)) len2))))]
+    (js/Math.hypot (- (:x p) (+ (:x a) (* t vx))) (- (:y p) (+ (:y a) (* t vy))))))
 
-(defn filter-min-dist [pts min-d]
-  (let [n (.-length pts)]
-    (if (<= n 2)
-      pts
-      (let [res (js/Array.)
-            p0 (aget pts 0)
-            _ (.push res p0)
-            last-p (volatile! p0)]
-        (dotimes [i (- n 2)]
-          (let [p (aget pts (inc i))
-                dist (js/Math.hypot (- (.-x p) (.-x @last-p))
-                                    (- (.-y p) (.-y @last-p)))]
-            (when (>= dist min-d)
-              (.push res p)
-              (vreset! last-p p))))
-        (.push res (aget pts (dec n)))
-        res))))
+(defn ccw [a b c]
+  (- (* (- (:x b) (:x a)) (- (:y c) (:y a)))
+     (* (- (:y b) (:y a)) (- (:x c) (:x a)))))
 
-(defn build-line-points [pts]
-  (let [n (.-length pts)
-        get-idx (.-getIndices js/window)
-        indices (if get-idx
-                  (get-idx n)
-                  (let [arr (js/Array.)]
-                    (dotimes [i n]
-                      (.push arr (str "a" (inc i))))
-                    arr))
-        points-map (js/Object.)]
-    (dotimes [i n]
-      (let [idx (aget indices i)
-            p (aget pts i)
-            x (or (.-x p) (aget p 0) 0)
-            y (or (.-y p) (aget p 1) 0)]
-        (aset points-map idx #js {:id idx :index idx :x x :y y})))
-    points-map))
+(defn seg-int? [a b c d]
+  (let [d1 (ccw a b c) d2 (ccw a b d) d3 (ccw c d a) d4 (ccw c d b)]
+    (and (not= (pos? d1) (pos? d2)) (not= (pos? d3) (pos? d4)))))
 
-(defn get-active-fill [editor]
-  (let [dfs (.-DefaultFillStyle js/window)]
-    (or (when dfs
-          (try
-            (let [val (.getStyleForNextShape editor dfs)]
-              (when (and val (not= val "none")) val))
-            (catch :default err
-              (js/console.error "get-active-fill caught error:" err)
-              nil)))
-        "none")))
+(defn hit-shape? [s p tol]
+  (let [pts (:points s)]
+    (if (= 1 (count pts))
+      (< (js/Math.hypot (- (:x p) (:x (first pts))) (- (:y p) (:y (first pts)))) tol)
+      (some (fn [[a b]] (< (pt-seg-dist p a b) tol)) (shape-segments s)))))
 
-(declare get-current-active-color)
+(defn translate-pts [s dx dy]
+  (update s :points #(mapv (fn [p] (-> p (update :x + dx) (update :y + dy))) %)))
 
-(defn convert-finished-draw []
-  (when-let [editor (get-editor)]
-    (let [b64 (.-b64Vecs js/window)
-          active-fill (get-active-fill editor)
-          active-color (or (get-current-active-color) "#212123")
-          shapes (.getCurrentPageShapes editor)]
-      (doseq [s shapes]
-        (when (= (.-type s) "draw")
-          (let [props (.-props s)
-                geom (.getShapeGeometry editor s)
-                geom-pts (when geom
-                           (or (.-vertices geom)
-                               (.-points geom)))
-                segments (.-segments props)
-                raw-pts (when (and segments (> (.-length segments) 0))
-                          (let [seg (aget segments 0)
-                                dim (or (.-dim seg) 3)]
-                            (if (and b64 (.-path seg))
-                              (.decodePoints b64 (.-path seg) dim)
-                              (.-points seg))))
-                pts (if (and geom-pts (> (.-length geom-pts) 1))
-                      geom-pts
-                      raw-pts)]
-            (when (and pts (> (.-length pts) 1))
-              (let [p-start (aget pts 0)
-                    p-end (aget pts (dec (.-length pts)))
-                    start-x (or (.-x p-start) (aget p-start 0) 0)
-                    start-y (or (.-y p-start) (aget p-start 1) 0)
-                    end-x (or (.-x p-end) (aget p-end 0) 0)
-                    end-y (or (.-y p-end) (aget p-end 1) 0)
-                    dist (js/Math.hypot (- end-x start-x) (- end-y start-y))
-                    seg-closed? (boolean (and segments (> (.-length segments) 0) (.-isClosed (aget segments 0))))
-                    is-closed? (and (> (.-length pts) 2)
-                                    (or seg-closed? (<= dist 16.0)))
-                    filtered (filter-min-dist pts 1.5)
-                    _ (when is-closed?
-                        (when (< (.-length filtered) 3)
-                          (let [p0 (aget filtered 0)
-                                p1 (aget filtered (dec (.-length filtered)))
-                                mid #js {:x (/ (+ (or (.-x p0) 0) (or (.-x p1) 0)) 2.0)
-                                         :y (/ (+ (or (.-y p0) 0) (or (.-y p1) 0)) 2.0)
-                                         :z 0.5}]
-                            (.splice filtered 1 0 mid)))
-                        (let [first-p (aget filtered 0)
-                              last-idx (dec (.-length filtered))]
-                          (aset filtered last-idx
-                                #js {:x (or (.-x first-p) 0)
-                                     :y (or (.-y first-p) 0)
-                                     :z (or (.-z first-p) 0.5)})))
-                    points-obj (build-line-points filtered)
-                    line-id (str "shape:line_" (js/Math.random))
-                    draw-size (or (.-size props) "m")
-                    draw-scale (or (.-scale props) 1)
-                    line-scale (* draw-scale (size->line-scale draw-size))
-                    line-fill (if is-closed? active-fill "none")
-                    line-color active-color
-                    line-shape #js {:id line-id
-                                    :type "line"
-                                    :x (.-x s)
-                                    :y (.-y s)
-                                    :meta #js {:converted true}
-                                    :props #js {:color line-color
-                                                :dash (let [d (.-dash props)]
-                                                        (if (or (nil? d) (= d "draw"))
-                                                          "solid"
-                                                          d))
-                                                :size draw-size
-                                                :spline "cubic"
-                                                :points points-obj
-                                                :scale line-scale
-                                                :isClosed is-closed?
-                                                :fill line-fill}}]
-                (.createShapes editor #js [line-shape])
-                (.deleteShapes editor #js [(.-id s)])))))))))
+(defn rotate-pt [c ang p]
+  (let [cos (js/Math.cos ang) sin (js/Math.sin ang)
+        dx (- (:x p) (:x c)) dy (- (:y p) (:y c))]
+    {:x (+ (:x c) (- (* dx cos) (* dy sin)))
+     :y (+ (:y c) (+ (* dx sin) (* dy cos)))}))
 
-(defn calc-avg-dist [pts]
-  (let [n (.-length pts)]
-    (if (< n 2)
-      0
-      (let [total (volatile! 0)]
-        (dotimes [i (dec n)]
-          (let [p1 (aget pts i)
-                p2 (aget pts (inc i))
-                dx (- (.-x p2) (.-x p1))
-                dy (- (.-y p2) (.-y p1))]
-            (vswap! total + (js/Math.hypot dx dy))))
-        (/ @total (dec n))))))
+(defn world->screen [st p]
+  (let [{:keys [x y zoom]} (:viewport st)]
+    {:x (+ x (* (:x p) zoom)) :y (+ y (* (:y p) zoom))}))
 
-(defn simplify-segment-points [pts tolerance]
-  (if (and pts (> (.-length pts) 2) (exists? js/simplify))
-    (let [pts-objs (js/Array.)]
-      (doseq [p pts]
-        (let [x (if (number? (.-x p)) (.-x p) (aget p 0))
-              y (if (number? (.-y p)) (.-y p) (aget p 1))
-              z (or (.-z p) 0.5)]
-          (.push pts-objs #js {:x x :y y :z z})))
-      (let [simplified (js/simplify pts-objs tolerance true)
-            res (js/Array.)]
-        (doseq [p simplified]
-          (.push res #js {:x (.-x p) :y (.-y p) :z (or (.-z p) 0.5)}))
-        res))
-    pts))
+(defn client->world [st cx cy]
+  (let [{:keys [x y zoom]} (:viewport st)]
+    {:x (/ (- cx x) zoom) :y (/ (- cy y) zoom)}))
 
-(defn tighten-sharp-corners [pts is-closed?]
-  (let [n (.-length pts)]
-    (if (< n 3)
-      pts
-      (let [res (js/Array.)
-            corner-cos-thresh 0.707 ; turns sharper than ~45 deg
-            min-arm-dist 16.0
-            stabilizer-dist 8.0
-            start-idx (if is-closed? 0 1)
-            end-idx (if is-closed? n (dec n))
-            needs-pre (make-array n)
-            needs-post (make-array n)]
-        (dotimes [step (- end-idx start-idx)]
-          (let [i (+ start-idx step)
-                prev-i (if (zero? i) (dec n) (dec i))
-                next-i (if (= i (dec n)) 0 (inc i))
-                p0 (aget pts prev-i)
-                p1 (aget pts i)
-                p2 (aget pts next-i)
-                dx1 (- (.-x p1) (.-x p0))
-                dy1 (- (.-y p1) (.-y p0))
-                d1 (js/Math.hypot dx1 dy1)
-                dx2 (- (.-x p2) (.-x p1))
-                dy2 (- (.-y p2) (.-y p1))
-                d2 (js/Math.hypot dx2 dy2)]
-            (when (and (> d1 0.001) (> d2 0.001))
-              (let [dot (+ (* dx1 dx2) (* dy1 dy2))
-                    cos-angle (/ dot (* d1 d2))]
-                ;; When cos-angle < 0.707, deflection angle is sharp (> 45 deg)
-                (when (< cos-angle corner-cos-thresh)
-                  (when (> d1 min-arm-dist)
-                    (aset needs-pre i true))
-                  (when (> d2 min-arm-dist)
-                    (aset needs-post i true)))))))
-        (dotimes [i n]
-          (let [p (aget pts i)
-                prev-i (if (zero? i) (dec n) (dec i))
-                next-i (if (= i (dec n)) 0 (inc i))]
-            (when (aget needs-pre i)
-              (let [p-prev (aget pts prev-i)
-                    dx (- (.-x p) (.-x p-prev))
-                    dy (- (.-y p) (.-y p-prev))
-                    d (js/Math.hypot dx dy)
-                    t (- 1.0 (/ stabilizer-dist d))]
-                (.push res #js {:x (+ (.-x p-prev) (* t dx))
-                                :y (+ (.-y p-prev) (* t dy))
-                                :z (or (.-z p) 0.5)})))
-            (.push res p)
-            (when (aget needs-post i)
-              (let [p-next (aget pts next-i)
-                    dx (- (.-x p-next) (.-x p))
-                    dy (- (.-y p-next) (.-y p))
-                    d (js/Math.hypot dx dy)
-                    t (/ stabilizer-dist d)]
-                (.push res #js {:x (+ (.-x p) (* t dx))
-                                :y (+ (.-y p) (* t dy))
-                                :z (or (.-z p) 0.5)})))))
-        res))))
+(defn coalesced [ne]
+  (if (and ne (.-getCoalescedEvents ne))
+    (let [evs (.getCoalescedEvents ne)]
+      (if (pos? (.-length evs)) (array-seq evs) [ne]))
+    [ne]))
 
-(defn size->tolerance [size-str]
-  (case size-str
-    "s" 0.25
-    "m" 0.5
-    "l" 0.75
-    "xl" 1.25
-    0.5))
+;; ---------------------------------------------------------------------------
+;; History
+;; ---------------------------------------------------------------------------
 
-(defn compare-by-index [a b]
-  (if-let [sort-fn (.-sortByIndex js/window)]
-    (sort-fn a b)
-    (let [ia (.-index a)
-          ib (.-index b)]
-      (cond
-        (< ia ib) -1
-        (> ia ib) 1
-        :else 0))))
+(defn history-push! []
+  (swap! app (fn [a]
+               (-> a
+                   (update :history #(vec (take-last 120 (conj % (:shapes a)))))
+                   (assoc :future [])))))
 
-(defn line-shape->points [s]
-  (let [pts-obj (.. s -props -points)
-        vals (if pts-obj (js/Object.values pts-obj) (js/Array.))]
-    (.sort vals compare-by-index)))
+(defn undo! []
+  (swap! app (fn [{:keys [history shapes] :as a}]
+               (if (seq history)
+                 (-> a (assoc :shapes (peek history))
+                     (update :history pop)
+                     (update :future conj shapes)
+                     (assoc :selection #{} :edit-id nil))
+                 a))))
 
-(defn simplify-selected-lines []
-  (when-let [editor (get-editor)]
-    (let [b64 (.-b64Vecs js/window)
-          selected-shapes (.getSelectedShapes editor)
-          updates (js/Array.)]
-      (doseq [s selected-shapes]
-        (cond
-          (= (.-type s) "line")
-          (let [size-str (or (.. s -props -size) "m")
-                tolerance (size->tolerance size-str)
-                is-closed? (boolean (.. s -props -isClosed))
-                pts (line-shape->points s)]
-            (when (> (.-length pts) 2)
-              (let [simplified (simplify-segment-points pts tolerance)
-                    tightened (tighten-sharp-corners simplified is-closed?)
-                    _ (when is-closed?
-                        (let [p0 (aget tightened 0)
-                              pn-idx (dec (.-length tightened))]
-                          (aset tightened pn-idx
-                                #js {:x (.-x p0) :y (.-y p0) :z (or (.-z p0) 0.5)})))
-                    new-pts-obj (build-line-points tightened)
-                    new-props (js/Object.assign #js {} (.-props s)
-                                                #js {:points new-pts-obj})]
-                (.push updates #js {:id (.-id s)
-                                    :type (.-type s)
-                                    :props new-props}))))
+(defn redo! []
+  (swap! app (fn [{:keys [future shapes] :as a}]
+               (if (seq future)
+                 (-> a (assoc :shapes (peek future))
+                     (update :future pop)
+                     (update :history conj shapes)
+                     (assoc :selection #{} :edit-id nil))
+                 a))))
 
-          (= (.-type s) "draw")
-          (let [size-str (or (.. s -props -size) "m")
-                tolerance (size->tolerance size-str)
-                segments (.. s -props -segments)
-                new-segments (js/Array.)]
-            (doseq [seg segments]
-              (let [dim (or (.-dim seg) 3)
-                    raw-pts (if (and b64 (.-path seg))
-                              (.decodePoints b64 (.-path seg) dim)
-                              (.-points seg))
-                    simplified (simplify-segment-points raw-pts tolerance)
-                    new-seg (if (and b64 (.-path seg))
-                              (let [new-path (.encodePoints b64 simplified dim)]
-                                (js/Object.assign #js {} seg #js {:path new-path}))
-                              (js/Object.assign #js {} seg #js {:points simplified}))]
-                (.push new-segments new-seg)))
-            (let [new-props (js/Object.assign #js {} (.-props s) #js {:segments new-segments})]
-              (.push updates #js {:id (.-id s) :type (.-type s) :props new-props})))))
-      (when (> (.-length updates) 0)
-        (.updateShapes editor updates)))))
+;; ---------------------------------------------------------------------------
+;; Mutations
+;; ---------------------------------------------------------------------------
 
-(defn toggle-selected-lines-closed []
-  (when-let [editor (get-editor)]
-    (let [selected-shapes (.getSelectedShapes editor)
-          updates (js/Array.)]
-      (doseq [s selected-shapes]
-        (when (= (.-type s) "line")
-          (let [cur-closed? (boolean (.. s -props -isClosed))
-                cur-fill (.. s -props -fill)
-                pts (line-shape->points s)
-                n (.-length pts)]
-            (when (>= n 2)
-              (if cur-closed?
-                (let [p0 (aget pts 0)
-                      pn (aget pts (dec n))
-                      pts-vec (js/Array.from pts)
-                      _ (when (and (> n 2) (<= (pt-dist p0 pn) 0.001))
-                          (.pop pts-vec))
-                      new-pts-obj (build-line-points pts-vec)
-                      new-props (js/Object.assign #js {} (.-props s)
-                                                  #js {:isClosed false
-                                                       :fill (or cur-fill "none")
-                                                       :points new-pts-obj})]
-                  (.push updates #js {:id (.-id s) :type (.-type s) :props new-props}))
+(defn commit-draw! []
+  (let [pts (:drawing @app)]
+    (when (seq pts)
+      (history-push!)
+      (swap! app (fn [a]
+                   (-> a
+                       (update :shapes conj
+                               {:id (gen-id) :type :path :points (vec pts)
+                                :stroke (get-in a [:palette :color])
+                                :stroke-width (get sizes (:size a) 3.5)
+                                :fill (if (= (:fill a) "solid") (get-in a [:palette :color]) "none")
+                                :is-closed false})
+                       (assoc :drawing [])))))))
 
-                (let [p0 (aget pts 0)
-                      pn (aget pts (dec n))
-                      d (pt-dist p0 pn)
-                      pts-vec (js/Array.from pts)
-                      _ (if (<= d 16.0)
-                          (let [last-idx (dec (.-length pts-vec))]
-                            (aset pts-vec last-idx #js {:x (.-x p0) :y (.-y p0) :z (or (.-z p0) 0.5)}))
-                          (.push pts-vec #js {:x (.-x p0) :y (.-y p0) :z (or (.-z p0) 0.5)}))
-                      new-pts-obj (build-line-points pts-vec)
-                      new-fill (or cur-fill "none")
-                      new-props (js/Object.assign #js {} (.-props s)
-                                                  #js {:isClosed true
-                                                       :fill new-fill
-                                                       :points new-pts-obj})]
-                  (.push updates #js {:id (.-id s) :type (.-type s) :props new-props})))))))
-      (when (> (.-length updates) 0)
-        (.updateShapes editor updates)))))
+(defn eraser-filter [shapes pts zoom]
+  (let [tol (/ 10 zoom)
+        segs (vec (map vector pts (rest pts)))]
+    (filterv
+     (fn [s]
+       (not (or (some (fn [[a b]]
+                        (some (fn [[c d]] (seg-int? a b c d)) (shape-segments s)))
+                      segs)
+                (some (fn [p] (hit-shape? s p tol)) pts))))
+     shapes)))
 
-(defn toggle-selected-lines-fill []
-  (when-let [editor (get-editor)]
-    (let [selected-shapes (.getSelectedShapes editor)
-          updates (js/Array.)]
-      (doseq [s selected-shapes]
-        (when (= (.-type s) "line")
-          (let [cur-closed? (boolean (.. s -props -isClosed))
-                cur-fill (.. s -props -fill)
-                new-fill (if (= cur-fill "solid") "none" "solid")]
-            (if cur-closed?
-              (let [new-props (js/Object.assign #js {} (.-props s)
-                                                #js {:fill new-fill})]
-                (.push updates #js {:id (.-id s) :type (.-type s) :props new-props}))
-              (let [pts (line-shape->points s)
-                    n (.-length pts)]
-                (when (>= n 2)
-                  (let [p0 (aget pts 0)
-                        pn (aget pts (dec n))
-                        d (pt-dist p0 pn)
-                        pts-vec (js/Array.from pts)
-                        _ (if (<= d 16.0)
-                            (let [last-idx (dec (.-length pts-vec))]
-                              (aset pts-vec last-idx #js {:x (.-x p0) :y (.-y p0) :z (or (.-z p0) 0.5)}))
-                            (.push pts-vec #js {:x (.-x p0) :y (.-y p0) :z (or (.-z p0) 0.5)}))
-                        new-pts-obj (build-line-points pts-vec)
-                        new-props (js/Object.assign #js {} (.-props s)
-                                                    #js {:isClosed true
-                                                         :fill "solid"
-                                                         :points new-pts-obj})]
-                    (.push updates #js {:id (.-id s) :type (.-type s) :props new-props}))))))))
-      (when (> (.-length updates) 0)
-        (.updateShapes editor updates)))))
+(defn add-eraser-points [ne]
+  (let [evs (coalesced ne)
+        st @app
+        new (mapv #(client->world st (.-clientX %) (.-clientY %)) evs)]
+    (swap! app (fn [a]
+                 (let [pts (into (:eraser a) new)]
+                   (assoc a :eraser pts
+                          :shapes (eraser-filter (:shapes a) pts (get-in a [:viewport :zoom]))))))))
 
-(set! (.-setThickness js/window) set-thickness)
-(set! (.-duplicateInPlace js/window) duplicate-in-place)
-(set! (.-simplifySelectedLines js/window) simplify-selected-lines)
-(set! (.-convertFinishedDraw js/window) convert-finished-draw)
-(set! (.-toggleSelectedLinesClosed js/window) toggle-selected-lines-closed)
-(set! (.-toggleSelectedLinesFill js/window) toggle-selected-lines-fill)
+(defn pick-color [hex]
+  (let [st @app sel (:selection st)]
+    (if (get-in st [:palette :bg-mode])
+      (swap! app assoc-in [:palette :bg] hex)
+      (do (history-push!)
+          (swap! app (fn [a]
+                       (-> a
+                           (assoc-in [:palette :color] hex)
+                           (update :shapes (fn [ss]
+                                             (mapv #(if (sel (:id %)) (assoc % :stroke hex) %) ss))))))))))
 
-(defonce _kbd-listener
-  (.addEventListener js/document "keydown"
-    (fn [e]
-      (when (and (.-ctrlKey e) (= (.toLowerCase (.-key e)) "l"))
-        (.preventDefault e)
-        (simplify-selected-lines))
-      (when (and (.-ctrlKey e) (= (.toLowerCase (.-key e)) "d"))
-        (.preventDefault e)
-        (duplicate-in-place)))))
+(defn set-size! [k]
+  (let [sel (:selection @app)]
+    (history-push!)
+    (swap! app (fn [a]
+                 (-> a (assoc :size k)
+                     (update :shapes (fn [ss]
+                                       (mapv #(if (sel (:id %)) (assoc % :stroke-width (sizes k)) %) ss))))))))
 
-(defn get-current-page-meta [editor]
-  (let [page (.getCurrentPage editor)]
-    (or (and page (.-meta page)) #js {})))
+(defn toggle-fill! []
+  (let [sel (:selection @app)
+        nf (if (= (:fill @app) "solid") "none" "solid")]
+    (history-push!)
+    (swap! app (fn [a]
+                 (-> a (assoc :fill nf)
+                     (update :shapes (fn [ss]
+                                       (mapv #(if (sel (:id %))
+                                                (assoc % :fill (if (= nf "solid") (:stroke %) "none"))
+                                                %) ss))))))))
 
-(defn get-current-palette-id []
-  (if-let [editor (get-editor)]
-    (let [meta (get-current-page-meta editor)]
-      (or (aget meta "paletteId") "cc-29"))
-    "cc-29"))
+(defn toggle-closed! []
+  (let [sel (:selection @app)]
+    (when (seq sel)
+      (history-push!)
+      (swap! app update :shapes
+             (fn [ss] (mapv #(if (sel (:id %)) (update % :is-closed not) %) ss))))))
 
-(defn get-page-background-color []
-  (if-let [editor (get-editor)]
-    (let [meta (get-current-page-meta editor)
-          pal-id (or (aget meta "paletteId") "cc-29")
-          pal (get palettes pal-id (get palettes "cc-29"))
-          extremes (get-palette-extremes pal)]
-      (or (aget meta "backgroundColor") (:bg-light extremes)))
-    "#f2f0e5"))
+(defn simplify-shape [s]
+  (if (> (count (:points s)) 2)
+    (let [js-pts (clj->js (mapv (fn [p] #js {:x (:x p) :y (:y p)}) (:points s)))
+          simple (js/simplify js-pts 2 true)
+          pts (mapv (fn [p] {:x (.-x p) :y (.-y p)}) (array-seq simple))]
+      (if (>= (count pts) 2) (assoc s :points pts) s))
+    s))
 
-(declare set-current-active-color)
+(defn simplify-selection! []
+  (let [sel (:selection @app)]
+    (when (seq sel)
+      (history-push!)
+      (swap! app update :shapes (fn [ss] (mapv #(if (sel (:id %)) (simplify-shape %) %) ss))))))
 
-(defn apply-page-visuals
-  ([editor]
-   (apply-page-visuals editor nil))
-  ([editor meta-override]
-   (let [page (.getCurrentPage editor)]
-     (when page
-       (let [meta (or meta-override (.-meta page) #js {})
-             pal-id (or (aget meta "paletteId") "cc-29")
-             pal (get palettes pal-id (get palettes "cc-29"))
-             extremes (get-palette-extremes pal)
-             default-bg (:bg-light extremes)
-             cur-bg (aget meta "backgroundColor")
-             bg-color (if (and cur-bg (some #{(str cur-bg)} (:colors pal)))
-                        cur-bg
-                        default-bg)]
-         (when (or (nil? (aget meta "paletteId")) (nil? (aget meta "backgroundColor")))
-           (let [new-meta (js/Object.assign #js {} meta #js {:paletteId pal-id
-                                                             :backgroundColor bg-color})]
-             (.updatePage editor #js {:id (.-id page) :meta new-meta})))
-         (when-let [root js/document.documentElement]
-           (.setProperty (.-style root) "--page-background" bg-color)
-           (.setProperty (.-style root) "--color-background" bg-color))
-         (when-let [app-el (.getElementById js/document "app")]
-           (.. app-el -style (setProperty "--page-background" bg-color "important"))
-           (.. app-el -style (setProperty "--color-background" bg-color "important")))
-         (doseq [el (array-seq (.querySelectorAll js/document ".tl-container, .tl-background"))]
-           (.. el -style (setProperty "--page-background" bg-color "important"))
-           (.. el -style (setProperty "--color-background" bg-color "important"))
-           (.. el -style (setProperty "background-color" bg-color "important")))
-         (when (nil? @current-active-color-atom)
-           (set-current-active-color (:darkest extremes))))))))
+(defn duplicate! []
+  (let [st @app sel (:selection st)]
+    (when (seq sel)
+      (history-push!)
+      (let [clones (mapv (fn [s] (assoc s :id (gen-id))) (filter #(sel (:id %)) (:shapes st)))]
+        (swap! app (fn [a] (-> a
+                               (update :shapes into clones)
+                               (assoc :selection (set (map :id clones))))))))))
 
-(declare schedule-save)
+(defn delete-selection! []
+  (let [sel (:selection @app)]
+    (when (seq sel)
+      (history-push!)
+      (swap! app (fn [a] (-> a
+                             (update :shapes (fn [ss] (filterv #(not (sel (:id %))) ss)))
+                             (assoc :selection #{} :edit-id nil)))))))
 
-(defn set-page-palette [pal-id]
-  (when-let [editor (get-editor)]
-    (let [page (.getCurrentPage editor)
-          meta (or (.-meta page) #js {})
-          pal (get palettes pal-id (get palettes "cc-29"))
-          extremes (get-palette-extremes pal)
-          cur-bg (aget meta "backgroundColor")
-          new-bg (if (and cur-bg (some #{(str cur-bg)} (:colors pal)))
-                   cur-bg
-                   (:bg-light extremes))
-          new-meta (js/Object.assign #js {} meta #js {:paletteId pal-id
-                                                      :backgroundColor new-bg})]
-      (.updatePage editor #js {:id (.-id page) :meta new-meta})
-      (apply-page-visuals editor new-meta)
-      (schedule-save editor))))
+(defn clear-page! []
+  (history-push!)
+  (swap! app assoc :shapes [] :selection #{} :edit-id nil))
 
-(defn set-page-background-color [bg-color]
-  (when-let [editor (get-editor)]
-    (let [page (.getCurrentPage editor)
-          meta (or (.-meta page) #js {})
-          new-meta (js/Object.assign #js {} meta #js {:backgroundColor bg-color})]
-      (.updatePage editor #js {:id (.-id page) :meta new-meta})
-      (apply-page-visuals editor new-meta)
-      (schedule-save editor))))
+;; ---------------------------------------------------------------------------
+;; Pointer interaction
+;; ---------------------------------------------------------------------------
 
-(defn set-current-active-color [color-val]
-  (reset! current-active-color-atom color-val)
-  (when-let [editor (get-editor)]
-    (when-let [sync-theme (.-syncActiveThemeColor js/window)]
-      (sync-theme color-val))
-    (when-let [custom-style (.-CustomColorStyle js/window)]
-      (try
-        (.setStyleForNextShapes editor custom-style color-val)
-        (.setStyleForSelectedShapes editor custom-style color-val)
-        (catch :default err
-          (js/console.error "set-current-active-color CustomColorStyle error:" err))))
-    (when (.-DefaultColorStyle js/window)
-      (try
-        (let [style-val (if (.startsWith color-val "#") "black" color-val)]
-          (.setStyleForNextShapes editor (.-DefaultColorStyle js/window) style-val)
-          (when (not (.startsWith color-val "#"))
-            (.setStyleForSelectedShapes editor (.-DefaultColorStyle js/window) style-val)))
-        (catch :default err
-          (js/console.error "set-current-active-color DefaultColorStyle error:" err))))
-    (let [selected (.getSelectedShapes editor)
-          updates (js/Array.)]
-      (doseq [s selected]
-        (let [st (.-type s)]
-          (when (= st "line")
-            (let [new-props (js/Object.assign #js {} (.-props s) #js {:color color-val})]
-              (.push updates #js {:id (.-id s) :type st :props new-props})))))
-      (when (> (.-length updates) 0)
-        (.updateShapes editor updates)))))
+(declare start-pinch apply-pinch add-draw-points)
 
-(defn get-current-active-color []
-  (if-let [editor (get-editor)]
-    (let [pal-id (get-current-palette-id)
-          pal (get palettes pal-id)]
-      (if (and pal (= (:type pal) "named") (.-DefaultColorStyle js/window))
-        (try
-          (.getStyleForNextShape editor (.-DefaultColorStyle js/window))
-          (catch :default err
-            (js/console.error "get-current-active-color caught error:" err)
-            @current-active-color-atom))
-        @current-active-color-atom))
-    @current-active-color-atom))
+(defn begin-scale [e origin other]
+  (.stopPropagation e)
+  (let [st @app
+        orig (into {} (for [s (:shapes st) :when (contains? (:selection st) (:id s))] [(:id s) (:points s)]))]
+    (.setPointerCapture @canvas-el (.-pointerId e))
+    (history-push!)
+    (swap! app assoc :drag {:kind :scale :origin origin
+                            :den {:x (- (:x other) (:x origin)) :y (- (:y other) (:y origin))}
+                            :orig orig})))
 
-(defn get-palettes-js []
-  (let [obj (js/Object.)]
-    (doseq [[k v] palettes]
-      (aset obj k (clj->js v)))
-    obj))
+(defn begin-rotate [e center]
+  (.stopPropagation e)
+  (let [st @app
+        w (client->world st (.-clientX e) (.-clientY e))
+        orig (into {} (for [s (:shapes st) :when (contains? (:selection st) (:id s))] [(:id s) (:points s)]))]
+    (.setPointerCapture @canvas-el (.-pointerId e))
+    (history-push!)
+    (swap! app assoc :drag {:kind :rotate :center center
+                            :ang0 (js/Math.atan2 (- (:y w) (:y center)) (- (:x w) (:x center)))
+                            :orig orig})))
 
-(set! (.-getPalettes js/window) get-palettes-js)
-(set! (.-getCurrentPaletteId js/window) get-current-palette-id)
-(set! (.-setPagePalette js/window) set-page-palette)
-(set! (.-getPageBackgroundColor js/window) get-page-background-color)
-(set! (.-setPageBackgroundColor js/window) set-page-background-color)
-(set! (.-setCurrentActiveColor js/window) set-current-active-color)
-(set! (.-getCurrentActiveColor js/window) get-current-active-color)
+(defn apply-scale [w]
+  (let [{:keys [origin den orig]} (:drag @app)
+        sx (let [v (/ (- (:x w) (:x origin)) (if (zero? (:x den)) 1.0 (:x den)))]
+             (if (< (js/Math.abs v) 0.02) (* 0.02 (if (neg? v) -1.0 1.0)) v))
+        sy (let [v (/ (- (:y w) (:y origin)) (if (zero? (:y den)) 1.0 (:y den)))]
+             (if (< (js/Math.abs v) 0.02) (* 0.02 (if (neg? v) -1.0 1.0)) v))]
+    (swap! app update :shapes
+           (fn [ss] (mapv (fn [s]
+                            (if-let [pts (get orig (:id s))]
+                              (assoc s :points (mapv (fn [p]
+                                                       {:x (+ (:x origin) (* (- (:x p) (:x origin)) sx))
+                                                        :y (+ (:y origin) (* (- (:y p) (:y origin)) sy))})
+                                                     pts))
+                              s))
+                          ss)))))
 
-(defn today-date-str []
-  (let [now (js/Date.)
-        y (.getFullYear now)
-        m (.padStart (str (inc (.getMonth now))) 2 "0")
-        d (.padStart (str (.getDate now)) 2 "0")]
-    (str y "-" m "-" d)))
+(defn apply-rotate [w]
+  (let [{:keys [center ang0 orig]} (:drag @app)
+        a (- (js/Math.atan2 (- (:y w) (:y center)) (- (:x w) (:x center))) ang0)]
+    (swap! app update :shapes
+           (fn [ss] (mapv (fn [s]
+                            (if-let [pts (get orig (:id s))]
+                              (assoc s :points (mapv #(rotate-pt center a %) pts))
+                              s))
+                          ss)))))
 
-(defn ensure-today-page [editor]
-  (let [today-str (today-date-str)
-        cur-page (.getCurrentPage editor)
-        cur-name (and cur-page (.-name cur-page))]
-    (when (not= cur-name today-str)
-      (let [all-pages (.getPages editor)
-            existing-today (first (filter (fn [p] (= (.-name p) today-str)) (array-seq all-pages)))]
-        (if existing-today
-          (.setCurrentPage editor (.-id existing-today))
-          (let [cur-shapes (.getCurrentPageShapes editor)
-                can-rename? (and (= cur-name "Page 1")
-                                 (= (.-length cur-shapes) 0))]
-            (if can-rename?
-              (.renamePage editor (.-id cur-page) today-str)
-              (let [new-page-id (.createPage editor #js {:name today-str})]
-                (.setCurrentPage editor new-page-id)))))))))
+(defn insert-vertex [s w]
+  (let [pts (vec (:points s))
+        segs (vec (map vector (range (dec (count pts))) (map vector pts (rest pts))))
+        nearest (apply min-key
+                       (fn [[i [a b]]] (pt-seg-dist w a b))
+                       segs)]
+    (if nearest
+      (let [[i _] nearest]
+        (assoc s :points (vec (concat (subvec pts 0 (inc i)) [w] (subvec pts (inc i))))))
+      s)))
 
-(defn save-to-indexeddb [editor]
-  (when (and editor (not @is-restoring-atom))
-    (when-let [get-snap (or (.-getEditorSnapshot js/window)
-                            (.-getSnapshot js/window))]
-      (try
-        (let [target (or (.-store editor) editor)
-              snap (get-snap target)]
-          (when snap
-            (when-let [idb (.-idbKeyval js/window)]
-              (-> (.set idb storage-key snap)
-                  (.catch (fn [err]
-                            (js/console.error "IndexedDB save failed:" err)))))))
-        (catch :default err
-          (js/console.error "save-to-indexeddb caught error:" err))))))
+(defn select-down [ne x y]
+  (let [st @app
+        w (client->world st x y)
+        tol (/ 9 (:zoom (:viewport st)))
+        hit (->> (:shapes st) (filter #(hit-shape? % w tol)) last)
+        eid (:edit-id st)]
+    (cond
+      (and eid hit (= eid (:id hit)))
+      (do (.setPointerCapture @canvas-el (.-pointerId ne))
+          (history-push!)
+          (swap! app (fn [a] (update :shapes (fn [ss]
+                                               (mapv #(if (= (:id %) eid) (insert-vertex % w) %) ss))))
+                 assoc :selection #{eid} :drag nil))
 
-(defn schedule-save [editor]
-  (when (and editor (not @is-restoring-atom))
-    (when-let [timer @save-timer-atom]
-      (js/clearTimeout timer))
-    (reset! save-timer-atom
-            (js/setTimeout
-             (fn []
-               (reset! save-timer-atom nil)
-               (save-to-indexeddb editor))
-             500))))
+      hit
+      (do (.setPointerCapture @canvas-el (.-pointerId ne))
+          (let [sel (if (.-shiftKey ne)
+                      (if (contains? (:selection st) (:id hit))
+                        (disj (:selection st) (:id hit))
+                        (conj (:selection st) (:id hit)))
+                      (if (contains? (:selection st) (:id hit))
+                        (:selection st)
+                        #{(:id hit)}))]
+            (swap! app assoc :selection sel :edit-id nil
+                            :drag {:kind :move :last w :ids sel :pushed false})))
 
-(defonce _unload-listener
-  (.addEventListener js/window "beforeunload"
-    (fn [_]
-      (when-let [editor (get-editor)]
-        (when @save-timer-atom
-          (js/clearTimeout @save-timer-atom)
-          (reset! save-timer-atom nil)
-          (save-to-indexeddb editor))))))
+      :else
+      (do (.setPointerCapture @canvas-el (.-pointerId ne))
+          (swap! app assoc :selection #{} :edit-id nil
+                          :drag {:kind :marquee :start [x y] :cur [x y]})))))
 
-(defn handle-editor-change [editor]
-  (sync-line-sizes editor)
-  (let [cur-page-id (.getCurrentPageId editor)]
-    (when (not= cur-page-id @last-page-id-atom)
-      (reset! last-page-id-atom cur-page-id)
-      (apply-page-visuals editor)))
-  (schedule-save editor))
+(defn select-move [x y]
+  (let [st @app
+        drag (:drag st)
+        w (client->world st x y)]
+    (cond
+      (= (:kind drag) :marquee)
+      (swap! app assoc-in [:drag :cur] [x y])
 
-(defn init-editor-listeners [editor]
-  (when (and editor (not= @initialized-editor-atom editor))
-    (reset! initialized-editor-atom editor)
-    (reset! editor-atom editor)
-    (reset! is-restoring-atom true)
-    (let [finish-init
+      (= (:kind drag) :move)
+      (let [dx (- (:x w) (:x (:last drag)))
+            dy (- (:y w) (:y (:last drag)))
+            ids (:ids drag)]
+        (when-not (:pushed drag) (history-push!))
+        (swap! app (fn [a]
+                     (-> a
+                         (update :shapes (fn [ss] (mapv #(if (contains? ids (:id %)) (translate-pts % dx dy) %) ss)))
+                         (assoc-in [:drag :last] w)
+                         (assoc-in [:drag :pushed] true)))))
+
+      (= (:kind drag) :scale) (apply-scale w)
+      (= (:kind drag) :rotate) (apply-rotate w)
+
+      (= (:kind drag) :vertex)
+      (let [id (:shape-id drag) idx (:idx drag)]
+        (when-not (:pushed drag) (history-push!))
+        (swap! app (fn [a]
+                     (-> a
+                         (update :shapes (fn [ss] (mapv (fn [s] (if (= (:id s) id) (assoc-in s [:points idx] w) s)) ss)))
+                         (assoc-in [:drag :pushed] true)))))
+
+      :else nil)))
+
+(defn select-up []
+  (let [st @app drag (:drag st)]
+    (when (= (:kind drag) :marquee)
+      (let [[sx sy] (:start drag) [cx cy] (:cur drag)
+            w1 (client->world st (min sx cx) (min sy cy))
+            w2 (client->world st (max sx cx) (max sy cy))]
+        (swap! app assoc :selection
+               (set (for [s (:shapes st)
+                          :when (let [b (shape-bbox s)]
+                                  (and (<= (:x1 b) (:x w2)) (>= (:x2 b) (:x w1))
+                                       (<= (:y1 b) (:y w2)) (>= (:y2 b) (:y w1))))]
+                      (:id s))))))
+    (swap! app assoc :drag nil :marquee nil)))
+
+(defn start-tool [ne tool x y pid]
+  (let [w (client->world @app x y)]
+    (case tool
+      :draw
+      (do (.setPointerCapture @canvas-el pid)
+          (swap! app assoc :drawing [w]))
+      :eraser
+      (do (.setPointerCapture @canvas-el pid)
+          (swap! app (fn [a]
+                       (assoc a :eraser [w]
+                              :shapes (eraser-filter (:shapes a) [w] (get-in a [:viewport :zoom]))))))
+      :select (select-down ne x y)
+      nil)))
+
+(defn on-down [e]
+  (let [ne (.-nativeEvent e)
+        type (.-pointerType ne)
+        x (.-clientX ne) y (.-clientY ne)
+        button (.-button ne)
+        pid (.-pointerId ne)
+        st @app]
+    (when (= type "touch") (.preventDefault ne))
+    (cond
+      (or (= button 1) (= (:tool st) :pan))
+      (do (.preventDefault ne)
+          (.setPointerCapture @canvas-el pid)
+          (swap! app assoc :pan {:x x :y y}))
+
+      (= type "touch")
+      (do
+        (swap! active-pointers assoc pid [x y])
+        (if (>= (count @active-pointers) 2)
+          (do (reset! pinch (start-pinch))
+              (swap! app assoc :drawing [] :eraser [] :drag nil))
+          (start-tool ne (:tool st) x y pid)))
+
+      :else
+      (start-tool ne (:tool st) x y pid))))
+
+(defn on-move [e]
+  (let [ne (.-nativeEvent e)
+        type (.-pointerType ne)
+        x (.-clientX ne) y (.-clientY ne)
+        pid (.-pointerId ne)
+        st @app]
+    (cond
+      (:pan st)
+      (let [{px :x py :y} (:pan st)]
+        (swap! app (fn [a]
+                     (-> a (update :viewport #(-> % (update :x + (- x px)) (update :y + (- y py))))
+                         (assoc :pan {:x x :y y})))))
+
+      (and (= type "touch") (>= (count @active-pointers) 2))
+      (do (swap! active-pointers assoc pid [x y]) (apply-pinch))
+
+      (and (= type "touch") (contains? @active-pointers pid))
+      (do (swap! active-pointers assoc pid [x y])
+          (if (seq (:drawing st))
+            (add-draw-points ne)
+            (if (seq (:eraser st)) (add-eraser-points ne))))
+
+      (= (:tool st) :draw)
+      (when (seq (:drawing st)) (add-draw-points ne))
+
+      (= (:tool st) :eraser)
+      (when (seq (:eraser st)) (add-eraser-points ne))
+
+      (= (:tool st) :select)
+      (when (:drag st) (select-move x y))
+
+      :else nil)))
+
+(defn on-up [e]
+  (let [ne (.-nativeEvent e)
+        type (.-pointerType ne)
+        pid (.-pointerId ne)
+        st @app]
+    (when (= type "touch")
+      (swap! active-pointers dissoc pid)
+      (when (< (count @active-pointers) 2) (reset! pinch nil)))
+    (cond
+      (:pan st) (swap! app assoc :pan nil)
+      (= (:tool st) :draw) (commit-draw!)
+      (= (:tool st) :eraser) (swap! app assoc :eraser [])
+      (= (:tool st) :select) (select-up)
+      :else nil)))
+
+(defn add-draw-points [ne]
+  (let [evs (coalesced ne)]
+    (swap! app update :drawing
+           (fn [pts]
+             (reduce (fn [acc ev]
+                       (let [st @app
+                             w (client->world st (.-clientX ev) (.-clientY ev))]
+                         (if (and (seq acc)
+                                  (< (js/Math.hypot (- (:x w) (:x (peek acc))) (- (:y w) (:y (peek acc)))) 0.6))
+                           acc
+                           (conj acc w))))
+                     pts evs)))))
+
+(defn on-dbl [e]
+  (let [ne (.-nativeEvent e)
+        st @app
+        cx (.-clientX ne) cy (.-clientY ne)
+        w (client->world st cx cy)
+        tol (/ 12 (:zoom (:viewport st)))
+        eid (:edit-id st)
+        es (first (filter #(= (:id %) eid) (:shapes st)))
+        vidx (when es
+               (first (for [[i p] (map-indexed vector (:points es))
+                            :let [sp (world->screen st p)
+                                  d (js/Math.hypot (- (:x sp) cx) (- (:y sp) cy))]
+                            :when (< d 14)] i)))]
+    (cond
+      (some? vidx)
+      (do (history-push!)
+          (swap! app update :shapes
+                 (fn [ss] (mapv (fn [sh]
+                                  (if (= (:id sh) eid)
+                                    (update sh :points #(vec (concat (subvec % 0 vidx) (subvec % (inc vidx)))))
+                                    sh)) ss))))
+      :else
+      (let [hit (->> (:shapes st) (filter #(hit-shape? % w tol)) last)]
+        (when hit
+          (swap! app assoc :edit-id (:id hit) :selection #{(:id hit)}))))))
+
+;; ---------------------------------------------------------------------------
+;; Pinch / zoom
+;; ---------------------------------------------------------------------------
+
+(defn start-pinch []
+  (let [[a b] (map second @active-pointers)
+        _ (when (or (nil? a) (nil? b)) (throw (js/Error. "need two pointers")))
+        m {:x (/ (+ (nth a 0) (nth b 0)) 2) :y (/ (+ (nth a 1) (nth b 1)) 2)}
+        d (js/Math.hypot (- (nth a 0) (nth b 0)) (- (nth a 1) (nth b 1)))
+        st @app]
+    {:dist (max d 1) :viewport (:viewport st) :world (client->world st (:x m) (:y m))}))
+
+(defn apply-pinch []
+  (when-let [{:keys [dist viewport world]} @pinch]
+    (let [pts (vec (vals @active-pointers))]
+      (when (>= (count pts) 2)
+        (let [[a b] pts
+              m {:x (/ (+ (nth a 0) (nth b 0)) 2) :y (/ (+ (nth a 1) (nth b 1)) 2)}
+              d (js/Math.hypot (- (nth a 0) (nth b 0)) (- (nth a 1) (nth b 1)))
+              z (max 0.1 (min 8 (* (:zoom viewport) (/ d dist))))]
+          (swap! app assoc :viewport {:zoom z
+                                      :x (- (:x m) (* (:x world) z))
+                                      :y (- (:y m) (* (:y world) z))}))))))
+
+(defn zoom-by [factor cx cy]
+  (let [st @app
+        {:keys [zoom]} (:viewport st)
+        nz (max 0.1 (min 8 (* zoom factor)))
+        w (client->world st cx cy)]
+    (swap! app assoc :viewport {:zoom nz
+                                :x (- cx (* (:x w) nz))
+                                :y (- cy (* (:y w) nz))})))
+
+(defn reset-zoom []
+  (let [st @app
+        {:keys [zoom]} (:viewport st)
+        cx (/ (.-innerWidth js/window) 2)
+        cy (/ (.-innerHeight js/window) 2)
+        w (client->world st cx cy)]
+    (swap! app assoc :viewport {:zoom 1.0
+                                :x (- cx (:x w))
+                                :y (- cy (:y w))})))
+
+(defn on-wheel [e]
+  (when (and @canvas-el (.contains @canvas-el (.-target e)))
+    (.preventDefault e)
+    (if (or (.-ctrlKey e) (.-metaKey e))
+      (zoom-by (js/Math.exp (* (- (.-deltaY e)) 0.0015)) (.-clientX e) (.-clientY e))
+      (swap! app update :viewport #(-> % (update :x - (.-deltaX e)) (update :y - (.-deltaY e)))))))
+
+;; ---------------------------------------------------------------------------
+;; Persistence (IndexedDB pages)
+;; ---------------------------------------------------------------------------
+
+(defn idb [] (.-idbKeyval js/window))
+
+(defn save-page! []
+  (let [st @app]
+    (when (and (idb) (:page st))
+      (-> (.set (idb) (str "sketchthing:" (:page st))
+                (clj->js {:shapes (:shapes st) :trace (:trace st) :palette (:palette st)}))
+          (.catch (fn [e] (js/console.error "save failed" e)))))))
+
+(defn schedule-save! []
+  (when-let [t @save-timer] (js/clearTimeout t))
+  (reset! save-timer (js/setTimeout save-page! 600)))
+
+(defn load-page! [date]
+  (let [fallback (fn [] (swap! app (fn [a] (-> a
+                                                (assoc :page date :drawing [] :eraser [])
+                                                (assoc :shapes []) (assoc :trace nil)
+                                                (assoc :selection #{} :edit-id nil)
+                                                (assoc :history [] :future [])))))]
+    (if (idb)
+      (-> (.get (idb) (str "sketchthing:" date))
+          (.then (fn [data]
+                   (let [d (when data (js->clj data :keywordize-keys true))]
+                     (swap! app (fn [a]
+                                  (cond-> (-> a
+                                              (assoc :page date :drawing [] :eraser [])
+                                              (assoc :shapes (vec (:shapes d)))
+                                              (assoc :trace (:trace d))
+                                              (assoc :selection #{} :edit-id nil)
+                                              (assoc :history [] :future []))
+                                    (:palette d) (assoc :palette (:palette d))))))))
+          (.catch (fn [_] (fallback))))
+      (fallback))))
+
+;; ---------------------------------------------------------------------------
+;; SVG export
+;; ---------------------------------------------------------------------------
+
+(defn shape->svg [s]
+  (if (= 1 (count (:points s)))
+    (let [p (first (:points s)) r (max 1 (/ (:stroke-width s) 2))]
+      (str "<circle cx=\"" (:x p) "\" cy=\"" (:y p) "\" r=\"" r "\" fill=\"" (:stroke s) "\"/>"))
+    (str "<path d=\"" (path-d (:points s) (:is-closed s))
+         "\" fill=\"" (if (:is-closed s) (:fill s) "none")
+         "\" stroke=\"" (:stroke s) "\" stroke-width=\"" (:stroke-width s)
+         "\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>")))
+
+(defn export-svg! [selection-only?]
+  (let [st @app
+        ss (if (and selection-only? (seq (:selection st)))
+             (filterv #(contains? (:selection st) (:id %)) (:shapes st))
+             (:shapes st))
+        b (when (seq ss)
+            (let [bs (map shape-bbox ss)]
+              {:x1 (apply min (map :x1 bs)) :y1 (apply min (map :y1 bs))
+               :x2 (apply max (map :x2 bs)) :y2 (apply max (map :y2 bs))}))
+        pad 24
+        b (or b {:x1 0 :y1 0 :x2 800 :y2 600})
+        w (+ (- (:x2 b) (:x1 b)) (* 2 pad))
+        h (+ (- (:y2 b) (:y1 b)) (* 2 pad))
+        ox (- (:x1 b) pad) oy (- (:y1 b) pad)
+        svg (str "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" ox " " oy " " w " " h
+                 "\" width=\"" w "\" height=\"" h "\">"
+                 "<rect x=\"" ox "\" y=\"" oy "\" width=\"" w "\" height=\"" h
+                 "\" fill=\"" (get-in st [:palette :bg]) "\"/>"
+                 (apply str (map shape->svg ss)) "</svg>")
+        blob (js/Blob. #js [svg] #js {:type "image/svg+xml"})
+        url (.createObjectURL js/URL blob)
+        a (.createElement js/document "a")]
+    (set! (.-href a) url)
+    (set! (.-download a) (str "sketchthing-" (:page st) ".svg"))
+    (js/document.body.appendChild a)
+    (.click a)
+    (.remove a)
+    (js/setTimeout #(.revokeObjectURL js/URL url) 1000)))
+
+;; ---------------------------------------------------------------------------
+;; Trace layer
+;; ---------------------------------------------------------------------------
+
+(defn load-trace-file! [e]
+  (let [file (.. e -target -files (item 0))]
+    (when file
+      (let [reader (js/FileReader.)]
+        (set! (.-onload reader)
+              (fn [ev]
+                (let [url (.. ev -target -result)
+                      img (js/Image.)]
+                  (set! (.-onload img)
+                        (fn []
+                          (let [iw (.-naturalWidth img) ih (.-naturalHeight img)
+                                scale (min 1 (/ 900 iw))]
+                            (swap! app assoc :trace {:url url :x 0 :y 0
+                                                     :w (* iw scale) :h (* ih scale)
+                                                     :opacity 0.5 :name (.-name file)}))))
+                  (set! (.-src img) url))))
+        (.readAsDataURL reader file)))))
+
+(defn add-trace-image! [url w h meta]
+  (let [img (js/Image.)]
+    (set! (.-onload img)
           (fn []
-            (try
-              (ensure-today-page editor)
-              (reset! last-page-id-atom (.getCurrentPageId editor))
-              (when (.-DefaultDashStyle js/window)
-                (try
-                  (.setStyleForNextShapes editor (.-DefaultDashStyle js/window) "solid")
-                  (catch :default _ nil)))
-              (apply-page-visuals editor)
-              (finally
-                (reset! is-restoring-atom false)))
-            (.on editor "change" (fn [_] (handle-editor-change editor))))]
-      (if-let [idb (.-idbKeyval js/window)]
-        (-> (.get idb storage-key)
-            (.then (fn [saved]
-                     (when saved
-                       (try
-                         (let [load-fn (or (.-loadEditorSnapshot js/window)
-                                           (.-loadSnapshot js/window))]
-                           (if load-fn
-                             (load-fn (or (.-store editor) editor) saved)
-                             (.loadSnapshot editor saved)))
-                         (catch :default err
-                           (js/console.error "Error restoring snapshot from IndexedDB:" err))))
-                     (finish-init)))
-            (.catch (fn [err]
-                      (js/console.error "IndexedDB load failed:" err)
-                      (finish-init))))
-        (finish-init)))))
+            (swap! app assoc :trace {:url url :x 0 :y 0
+                                     :w (or (.-naturalWidth img) w)
+                                     :h (or (.-naturalHeight img) h)
+                                     :opacity 0.5
+                                     :meta (when meta (js->clj meta :keywordize-keys true))
+                                     :name "pinterest"})))
+    (set! (.-onerror img)
+          (fn [] (swap! app assoc :trace {:url url :x 0 :y 0 :w w :h h :opacity 0.5 :name "pinterest"})))
+    (set! (.-src img) url)))
 
-(defonce _ready-listener
-  (.addEventListener js/window "tldraw-ready"
-    (fn [e]
-      (js/console.log "tldraw is ready!")
-      (init-editor-listeners (.-detail e)))))
+(set! (.-addTraceImageToCanvas js/window) add-trace-image!)
 
-(when (exists? js/window.editor)
-  (init-editor-listeners js/window.editor))
+;; ---------------------------------------------------------------------------
+;; Components
+;; ---------------------------------------------------------------------------
+
+(defn shape-view [s]
+  (if (= 1 (count (:points s)))
+    (let [p (first (:points s)) r (max 1 (/ (:stroke-width s) 2))]
+      [:circle {:cx (:x p) :cy (:y p) :r r :fill (:stroke s) :pointerEvents "none"}])
+    [:path {:d (path-d (:points s) (:is-closed s))
+            :fill (if (:is-closed s) (:fill s) "none")
+            :stroke (:stroke s)
+            :strokeWidth (:stroke-width s)
+            :strokeLinecap "round"
+            :strokeLinejoin "round"
+            :pointerEvents "none"}]))
+
+(defn selection-overlay []
+  (let [st @app
+        b (selection-bbox (:shapes st) (:selection st))]
+    (when b
+      (let [s1 (world->screen st {:x (:x1 b) :y (:y1 b)})
+            s2 (world->screen st {:x (:x2 b) :y (:y2 b)})
+            x1 (:x s1) y1 (:y s1) x2 (:x s2) y2 (:y s2)
+            hs 7
+            corners [[(:x1 b) (:y1 b) (:x2 b) (:y2 b)]
+                     [(:x2 b) (:y1 b) (:x1 b) (:y2 b)]
+                     [(:x2 b) (:y2 b) (:x1 b) (:y1 b)]
+                     [(:x1 b) (:y2 b) (:x2 b) (:y1 b)]]
+            center {:x (/ (+ (:x1 b) (:x2 b)) 2) :y (/ (+ (:y1 b) (:y2 b)) 2)}]
+        [:g.overlay
+         [:rect {:x x1 :y y1 :width (max 0 (- x2 x1)) :height (max 0 (- y2 y1))
+                 :fill "none" :stroke "#4465e9" :strokeWidth 1.5
+                 :strokeDasharray "4 3" :pointerEvents "none"}]
+         (for [[ox oy px py] corners]
+           (let [sc (world->screen st {:x ox :y oy})]
+             ^{:key [ox oy]}
+             [:rect {:x (- (:x sc) hs) :y (- (:y sc) hs) :width (* 2 hs) :height (* 2 hs)
+                     :fill "#ffffff" :stroke "#4465e9" :strokeWidth 1.5
+                     :style {:cursor "nwse-resize"}
+                     :onPointerDown (fn [e] (begin-scale e {:x ox :y oy} {:x px :y py}))}]))
+         [:line {:x1 (/ (+ x1 x2) 2) :y1 y1 :x2 (/ (+ x1 x2) 2) :y2 (- y1 26)
+                 :stroke "#4465e9" :strokeWidth 1.5 :pointerEvents "none"}]
+         [:circle {:cx (/ (+ x1 x2) 2) :cy (- y1 26) :r hs
+                   :fill "#ffffff" :stroke "#4465e9" :strokeWidth 1.5
+                   :style {:cursor "grab"}
+                   :onPointerDown (fn [e] (begin-rotate e center))}]]))))
+
+(defn vertex-overlay []
+  (let [st @app
+        id (:edit-id st)
+        s (first (filter #(= (:id %) id) (:shapes st)))]
+    (when s
+      [:g.overlay
+       (for [[i p] (map-indexed vector (:points s))]
+         (let [sp (world->screen st p)]
+           ^{:key i}
+           [:circle {:cx (:x sp) :cy (:y sp) :r 6
+                     :fill "#ffffff" :stroke "#e03131" :strokeWidth 2
+                     :style {:cursor "move"}
+                     :onPointerDown (fn [e]
+                                      (.stopPropagation e)
+                                      (.setPointerCapture @canvas-el (.-pointerId e))
+                                      (swap! app assoc :drag {:kind :vertex :shape-id id :idx i :pushed false}))}]))])))
+
+(defn canvas []
+  (let [{:keys [viewport shapes drawing eraser trace selection drag edit-id]} @app
+        {:keys [x y zoom]} viewport
+        bg (get-in @app [:palette :bg])]
+    [:svg.canvas-svg
+     {:ref (fn [el] (when el (reset! canvas-el el)))
+      :onPointerDown on-down
+      :onPointerMove on-move
+      :onPointerUp on-up
+      :onPointerCancel on-up
+      :onDoubleClick on-dbl
+      :onContextMenu (fn [e] (.preventDefault e))}
+     [:rect {:x 0 :y 0 :width "100%" :height "100%" :fill bg}]
+     [:g.world {:transform (str "translate(" x " " y ") scale(" zoom ")")}
+      (when trace
+        [:image {:href (:url trace) :x (:x trace) :y (:y trace)
+                 :width (:w trace) :height (:h trace)
+                 :opacity (:opacity trace 0.5)
+                 :preserveAspectRatio "xMidYMid meet"
+                 :pointerEvents "none"}])
+      (for [s shapes] ^{:key (:id s)} [shape-view s])
+      (when (seq drawing)
+        [shape-view {:points drawing :stroke (get-in @app [:palette :color])
+                     :stroke-width (get sizes (:size @app) 3.5) :fill "none" :is-closed false}])
+      (when (seq eraser)
+        [:polyline {:points (str/join " " (map (fn [p] (str (:x p) "," (:y p))) eraser))
+                    :fill "none" :stroke "rgba(220,38,38,0.55)"
+                    :strokeWidth (/ 8 zoom) :strokeLinecap "round" :pointerEvents "none"}])]
+     (when (= (:kind drag) :marquee)
+       (let [[sx sy] (:start drag) [cx cy] (:cur drag)]
+         [:rect {:x (min sx cx) :y (min sy cy)
+                 :width (js/Math.abs (- cx sx)) :height (js/Math.abs (- cy sy))
+                 :fill "rgba(68,101,233,0.12)" :stroke "#4465e9" :strokeWidth 1
+                 :strokeDasharray "4 3" :pointerEvents "none"}]))
+     (when (seq selection) [selection-overlay])
+     (when edit-id [vertex-overlay])]))
+
+(defn tool-button [tool label]
+  [:button.tool-btn {:class (when (= (:tool @app) tool) "active")
+                     :title label
+                     :onClick #(swap! app assoc :tool tool :drawing [] :eraser [])}
+   label])
+
+(defn top-bar []
+  (let [st @app]
+    [:div.top-bar
+     [:input.page-input {:type "date" :value (:page st)
+                         :onChange (fn [e] (load-page! (.. e -target -value)))}]
+     [:button.icon-btn {:title "Undo (Ctrl-Z)" :onClick undo!} "↶"]
+     [:button.icon-btn {:title "Redo (Ctrl-Y)" :onClick redo!} "↷"]
+     [:button.icon-btn {:title "Delete (Del)" :onClick delete-selection!} "⌫"]
+     [:button.icon-btn {:title "Duplicate (Ctrl-D)" :onClick duplicate!} "⧉"]
+     [:button.icon-btn {:title "Export SVG" :onClick #(export-svg! false)} "⬇"]
+     [:button.icon-btn {:title "Export selection" :onClick #(export-svg! true)} "⤓"]]))
+
+(defn swatch [hex]
+  (let [p (:palette @app)
+        current (if (:bg-mode p) (:bg p) (:color p))]
+    [:button.swatch {:style {:background hex}
+                     :class (when (= hex current) "active")
+                     :title hex
+                     :onClick #(pick-color hex)}]))
+
+(defn style-panel []
+  (let [st @app
+        p (:palette st)
+        pal (first (filter #(= (:id %) (:palette-id p)) palettes))
+        trace (:trace st)]
+    [:div.style-panel
+     [:div.style-head
+      [:select.palette-select {:value (:palette-id p)
+                               :onChange #(swap! app assoc-in [:palette :palette-id] (.. % -target -value))}
+       (for [pl palettes] ^{:key (:id pl)} [:option {:value (:id pl)} (:name pl)])]
+      [:button.bg-btn {:class (when (:bg-mode p) "active")
+                       :title "Select canvas background color"
+                       :onClick #(swap! app update-in [:palette :bg-mode] not)}
+       [:span.bg-chip {:style {:background (:bg p)}}] "BG"]]
+     [:div.swatches
+      (for [c (:colors pal)] ^{:key c} [swatch c])]
+     [:div.style-row
+      [:button.mini-btn {:class (when (= (:fill st) "solid") "active")
+                         :title "Toggle fill of selection"
+                         :onClick toggle-fill!} "fill"]
+      [:button.mini-btn {:title "Toggle open/closed selection" :onClick toggle-closed!} "close"]
+      [:button.mini-btn {:title "Simplify selection (Ctrl-L)" :onClick simplify-selection!} "simplify"]]
+     [:div.sizes
+      (for [[k _] size-order] ^{:key k}
+        [:button.mini-btn {:class (when (= k (:size st)) "active")
+                           :onClick #(set-size! k)} (str/upper-case k)])]
+     [:div.trace-row
+      [:label.trace-label
+       "Trace"
+       [:input {:type "file" :accept "image/*" :style {:display "none"}
+                :onChange load-trace-file!}]]
+      (when trace
+        [:input.trace-opacity {:type "range" :min "0.05" :max "1" :step "0.05"
+                               :value (:opacity trace 0.5)
+                               :onChange #(swap! app assoc-in [:trace :opacity] (js/parseFloat (.. % -target -value)))}])
+      (when trace
+        [:button.mini-btn {:title "Remove trace image" :onClick #(swap! app assoc :trace nil)} "✕"])]]))
+
+(defn toolbar []
+  [:div.toolbar
+   [tool-button :select "select"]
+   [tool-button :pan "pan"]
+   [tool-button :draw "draw"]
+   [tool-button :eraser "erase"]
+   [:span.zoom-label (str (js/Math.round (* 100 (get-in @app [:viewport :zoom]))) "%")]
+   [:button.icon-btn {:title "Zoom out" :onClick #(zoom-by (/ 1 1.25) (/ (.-innerWidth js/window) 2) (/ (.-innerHeight js/window) 2))} "−"]
+   [:button.icon-btn {:title "Zoom in" :onClick #(zoom-by 1.25 (/ (.-innerWidth js/window) 2) (/ (.-innerHeight js/window) 2))} "+"]
+   [:button.icon-btn {:title "Reset zoom (100%)" :onClick reset-zoom} "1:1"]])
+
+(defn root []
+  [:div.app-root
+   [canvas]
+   [top-bar]
+   [style-panel]
+   [toolbar]])
+
+;; ---------------------------------------------------------------------------
+;; Keyboard & init
+;; ---------------------------------------------------------------------------
+
+(defn on-key [e]
+  (let [tag (.-tagName (.-target e))]
+    (when-not (contains? #{"INPUT" "TEXTAREA" "SELECT"} tag)
+      (let [k (.-key e)
+            ctrl (or (.-ctrlKey e) (.-metaKey e))]
+        (cond
+          (and ctrl (= k "z")) (do (.preventDefault e) (if (.-shiftKey e) (redo!) (undo!)))
+          (and ctrl (= k "y")) (do (.preventDefault e) (redo!))
+          (and ctrl (= k "d")) (do (.preventDefault e) (duplicate!))
+          (and ctrl (= k "l")) (do (.preventDefault e) (simplify-selection!))
+          (contains? #{"Delete" "Backspace"} k) (do (.preventDefault e) (delete-selection!))
+          (= k "Escape") (swap! app assoc :selection #{} :edit-id nil)
+          (= k "v") (swap! app assoc :tool :select)
+          (= k "d") (swap! app assoc :tool :draw)
+          (= k "e") (swap! app assoc :tool :eraser)
+          (= k "h") (swap! app assoc :tool :pan)
+          :else nil)))))
+
+(defn init! []
+  (rdom/render [root] (.getElementById js/document "app"))
+  (.addEventListener js/window "keydown" on-key)
+  (.addEventListener js/window "wheel" on-wheel #js {:passive false})
+  (add-watch app :saver
+             (fn [_ _ old new]
+               (when (or (not= (:shapes old) (:shapes new))
+                         (not= (:trace old) (:trace new)))
+                 (schedule-save!))))
+  (load-page! (:page @app)))
+
+(init!)

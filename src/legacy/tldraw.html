@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <title>SketchThing</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#171819">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <script>
+      (function() {
+        const logoSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><rect width="24" height="24" fill="#171819"/><path d="M4 15c2 -4.97 7.356 -11 9 -11c4.25 0 -5.5 11.958 -3 13s5.65 -6.678 7.4 -5.902c1.75 .777 -1.05 7.589 -.3 8.63s3.15 -.897 3.9 -2.728" fill="none" stroke="#E8E8E8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        const iconDataUrl = 'data:image/svg+xml;base64,' + btoa(logoSvg);
+
+        const iconLink = document.createElement('link');
+        iconLink.rel = 'icon';
+        iconLink.type = 'image/svg+xml';
+        iconLink.href = iconDataUrl;
+        document.head.appendChild(iconLink);
+
+        const appleIconLink = document.createElement('link');
+        appleIconLink.rel = 'apple-touch-icon';
+        appleIconLink.href = iconDataUrl;
+        document.head.appendChild(appleIconLink);
+
+        const manifest = {
+          name: 'SketchThing',
+          short_name: 'SketchThing',
+          display: 'standalone',
+          theme_color: '#171819',
+          background_color: '#171819',
+          start_url: window.location.href,
+          icons: [{
+            src: iconDataUrl,
+            sizes: 'any',
+            type: 'image/svg+xml'
+          }]
+        };
+
+        const manifestLink = document.createElement('link');
+        manifestLink.rel = 'manifest';
+        manifestLink.href = 'data:application/json;base64,' + btoa(JSON.stringify(manifest));
+        document.head.appendChild(manifestLink);
+
+        if ('serviceWorker' in navigator) {
+          window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+              .then((reg) => {
+                reg.update();
+              })
+              .catch((err) => {
+                console.error('Service worker registration failed:', err);
+              });
+          });
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="https://esm.sh/tldraw/tldraw.css">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/scittle@latest/dist/scittle.min.js" type="application/javascript"></script>
+    <script src="https://cdn.jsdelivr.net/npm/scittle@latest/dist/scittle.promesa.min.js" type="application/javascript"></script>
+    <script src="https://cdn.jsdelivr.net/npm/simplify-js@1.2.4/simplify.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@19.3.1",
+          "react-dom": "https://esm.sh/react-dom@19.3.1",
+          "react-dom/client": "https://esm.sh/react-dom@19.3.1/client"
+        }
+      }
+    </script>
+    <script type="module">
+      import React from "react";
+      import { createRoot } from "react-dom/client";
+      import * as tldraw from "https://esm.sh/tldraw";
+      import * as idbKeyvalModule from "https://cdn.jsdelivr.net/npm/idb-keyval@6/+esm";
+
+      if (!window.idbKeyval) {
+        window.idbKeyval = idbKeyvalModule;
+      }
+
+      const {
+        Tldraw,
+        LineShapeUtil,
+        atom,
+        StyleProp,
+        DefaultToolbar,
+        SelectToolbarItem,
+        HandToolbarItem,
+        DrawToolbarItem,
+        EraserToolbarItem,
+        LineToolbarItem,
+        AssetToolbarItem,
+        TldrawUiButton,
+        b64Vecs,
+        DefaultColorStyle,
+        DefaultDashStyle,
+        DefaultFillStyle,
+        DefaultSizeStyle,
+        getPointsFromDrawSegment,
+        getIndices,
+        sortByIndex,
+        DefaultStylePanel,
+        StylePanelSection,
+        StylePanelColorPicker,
+        StylePanelSizePicker,
+        StylePanelButtonPicker,
+        StylePanelButtonPickerInline,
+        TldrawUiToolbar,
+        useStylePanelContext,
+        Polygon2d,
+        SVGContainer,
+        STROKE_SIZES,
+        T,
+        getSnapshot,
+        loadSnapshot
+      } = tldraw;
+
+      window.getEditorSnapshot = (target) => {
+        if (!target) return null;
+        const store = target.store || target;
+        try {
+          if (typeof getSnapshot === "function") {
+            return getSnapshot(store);
+          }
+          if (typeof target.getSnapshot === "function") {
+            return target.getSnapshot();
+          }
+          if (typeof store.getSnapshot === "function") {
+            return store.getSnapshot();
+          }
+          if (store && typeof store.getStoreSnapshot === "function") {
+            return { document: store.getStoreSnapshot() };
+          }
+        } catch (err) {
+          throw err;
+        }
+        return null;
+      };
+
+      window.loadEditorSnapshot = (target, snapshot) => {
+        if (!target || !snapshot) return;
+        const store = target.store || target;
+        try {
+          if (typeof loadSnapshot === "function") {
+            loadSnapshot(store, snapshot);
+            return;
+          }
+          if (typeof target.loadSnapshot === "function") {
+            target.loadSnapshot(snapshot);
+            return;
+          }
+          if (typeof store.loadSnapshot === "function") {
+            store.loadSnapshot(snapshot.document || snapshot);
+            return;
+          }
+        } catch (err) {
+          throw err;
+        }
+      };
+
+      const CustomColorStyle = StyleProp && StyleProp.define
+        ? StyleProp.define("sprite:color", {
+            defaultValue: "#212123",
+            type: T && T.string ? T.string : undefined
+          })
+        : DefaultColorStyle;
+
+      window.React = React;
+      window.b64Vecs = b64Vecs;
+      window.CustomColorStyle = CustomColorStyle;
+      window.DefaultColorStyle = DefaultColorStyle;
+      window.DefaultDashStyle = DefaultDashStyle;
+      window.DefaultFillStyle = DefaultFillStyle;
+      window.DefaultSizeStyle = DefaultSizeStyle;
+      window.getPointsFromDrawSegment = getPointsFromDrawSegment;
+      window.getIndices = getIndices;
+      window.sortByIndex = sortByIndex;
+
+      window.addTraceImageToCanvas = (imgUrl, width, height, meta = {}) => {
+        const editor = window.editor;
+        if (!editor) return;
+
+        const bounds = editor.getViewportPageBounds();
+        const cx = bounds.minX + bounds.width / 2;
+        const cy = bounds.minY + bounds.height / 2;
+
+        const aspect = (width && height) ? (width / height) : 1;
+        let targetW = 600;
+        let targetH = 600 / aspect;
+
+        if (targetH > bounds.height * 0.85) {
+          targetH = bounds.height * 0.85;
+          targetW = targetH * aspect;
+        }
+
+        const uniqueKey = Date.now() + "_" + Math.floor(Math.random() * 10000);
+        const assetId = "asset:pin_" + uniqueKey;
+        const shapeId = "shape:pin_" + uniqueKey;
+        const pinMeta = Object.assign({ isTrace: true }, meta || {});
+
+        try {
+          if (typeof editor.createAssets === "function") {
+            editor.createAssets([{
+              id: assetId,
+              typeName: "asset",
+              type: "image",
+              props: {
+                name: "pin-trace",
+                src: imgUrl,
+                w: targetW,
+                h: targetH,
+                mimeType: "image/jpeg",
+                isAnimated: false
+              },
+              meta: pinMeta
+            }]);
+          }
+        } catch (err) {
+          console.error("createAssets error:", err);
+        }
+
+        editor.createShapes([{
+          id: shapeId,
+          type: "image",
+          x: cx - targetW / 2,
+          y: cy - targetH / 2,
+          opacity: 0.5,
+          isLocked: false,
+          meta: pinMeta,
+          props: {
+            assetId: assetId,
+            w: targetW,
+            h: targetH
+          }
+        }]);
+
+        if (typeof editor.sendToBack === "function") {
+          editor.sendToBack([shapeId]);
+        }
+        editor.updateShape({ id: shapeId, type: "image", isLocked: true });
+      };
+
+      if (Polygon2d && !Polygon2d.prototype.getSegments) {
+        Polygon2d.prototype.getSegments = function () {
+          return this.segments;
+        };
+      }
+
+      const editingLineId = atom
+        ? atom("editingLineId", null)
+        : {
+            _val: null,
+            get() {
+              return this._val;
+            },
+            set(v) {
+              this._val = v;
+            }
+          };
+
+      let lastToggleTime = 0;
+
+      function setEditingLine(shapeId) {
+        editingLineId.set(shapeId);
+        if (shapeId && window.editor) {
+          const shape = window.editor.getShape(shapeId);
+          if (shape) {
+            window.editor.updateShape({ id: shape.id, type: shape.type });
+          }
+        }
+      }
+
+      function clearEditingLine() {
+        const prevId = editingLineId.get();
+        if (prevId) {
+          editingLineId.set(null);
+          if (window.editor) {
+            const shape = window.editor.getShape(prevId);
+            if (shape) {
+              window.editor.updateShape({ id: shape.id, type: shape.type });
+            }
+          }
+        }
+      }
+
+      function toggleEditingLine(shapeId) {
+        const now = Date.now();
+        if (now - lastToggleTime < 250) {
+          return;
+        }
+        lastToggleTime = now;
+        if (editingLineId.get() === shapeId) {
+          clearEditingLine();
+        } else {
+          setEditingLine(shapeId);
+        }
+      }
+
+      function toggleVertexEditMode() {
+        if (!window.editor) return;
+        const selected = window.editor.getSelectedShapes();
+        if (selected.length === 1 && selected[0].type === "line") {
+          toggleEditingLine(selected[0].id);
+        } else if (editingLineId.get()) {
+          clearEditingLine();
+        }
+      }
+
+      window.toggleVertexEditMode = toggleVertexEditMode;
+
+      function resolveColor(editor, colorName, variant = "solid") {
+        if (!colorName) return "black";
+        if (colorName.startsWith("#") || colorName.startsWith("rgb")) {
+          return colorName;
+        }
+        try {
+          let theme = editor && typeof editor.getCurrentTheme === "function"
+            ? editor.getCurrentTheme()
+            : null;
+          if (!theme && typeof tldraw.getDefaultColorTheme === "function") {
+            const isDark = editor && typeof editor.getDarkMode === "function"
+              ? editor.getDarkMode()
+              : false;
+            theme = tldraw.getDefaultColorTheme({ isDarkMode: isDark });
+          }
+          if (theme) {
+            const mode = (editor && typeof editor.getColorMode === "function" &&
+              editor.getColorMode()) || "light";
+            const palette = theme.colors
+              ? (theme.colors[mode] || theme.colors.light || theme.colors)
+              : theme;
+            if (palette && palette[colorName]) {
+              const val = palette[colorName][variant] ||
+                palette[colorName].solid ||
+                palette[colorName];
+              if (val) return val;
+            }
+          }
+        } catch (_) {}
+        return colorName;
+      }
+
+      function syncActiveThemeColor(colorVal) {
+        if (!window.editor || !colorVal) return;
+        const editor = window.editor;
+        const targetColor = colorVal.startsWith("#") ? colorVal : null;
+
+        try {
+          if (typeof editor.getTheme === "function" &&
+              typeof editor.updateTheme === "function") {
+            const theme = editor.getTheme("default");
+            if (theme && theme.colors) {
+              const lightSolid = targetColor || "#1d1c20";
+              const darkSolid = targetColor || "#e2e1e4";
+              editor.updateTheme({
+                ...theme,
+                colors: {
+                  ...theme.colors,
+                  light: {
+                    ...theme.colors.light,
+                    black: { ...theme.colors.light?.black, solid: lightSolid }
+                  },
+                  dark: {
+                    ...theme.colors.dark,
+                    black: { ...theme.colors.dark?.black, solid: darkSolid }
+                  }
+                }
+              });
+            }
+          }
+        } catch (err) {
+          console.error("syncActiveThemeColor updateTheme error:", err);
+        }
+
+        try {
+          if (typeof editor.getCurrentTheme === "function") {
+            const curTheme = editor.getCurrentTheme();
+            if (curTheme) {
+              const lightSolid = targetColor || "#1d1c20";
+              const darkSolid = targetColor || "#e2e1e4";
+              if (curTheme.colors) {
+                if (curTheme.colors.light?.black) {
+                  curTheme.colors.light.black.solid = lightSolid;
+                }
+                if (curTheme.colors.dark?.black) {
+                  curTheme.colors.dark.black.solid = darkSolid;
+                }
+              }
+              if (curTheme.black && targetColor) {
+                curTheme.black.solid = targetColor;
+              }
+            }
+          }
+        } catch (err) {
+          console.error("syncActiveThemeColor getCurrentTheme error:", err);
+        }
+
+        try {
+          if (tldraw.DefaultColorThemePalette && targetColor) {
+            if (tldraw.DefaultColorThemePalette.lightMode?.black) {
+              tldraw.DefaultColorThemePalette.lightMode.black.solid = targetColor;
+            }
+            if (tldraw.DefaultColorThemePalette.darkMode?.black) {
+              tldraw.DefaultColorThemePalette.darkMode.black.solid = targetColor;
+            }
+          }
+        } catch (_) {}
+      }
+
+      window.syncActiveThemeColor = syncActiveThemeColor;
+
+      class CustomLineShapeUtil extends LineShapeUtil {
+        static type = "line";
+        static props = {
+          ...LineShapeUtil.props,
+          color: CustomColorStyle,
+          fill: DefaultFillStyle,
+          isClosed: (T && T.boolean && T.boolean.optional ? T.boolean.optional() : (T ? T.boolean : undefined))
+        };
+
+        getDefaultProps() {
+          const activeColor = (window.getCurrentActiveColor && window.getCurrentActiveColor()) || "#212123";
+          return {
+            ...super.getDefaultProps(),
+            color: activeColor,
+            fill: "none",
+            isClosed: false
+          };
+        }
+
+        canEdit = () => false;
+
+        getHandles(shape) {
+          const editor = this.editor;
+          const currentTool = editor && typeof editor.getCurrentToolId === "function"
+            ? editor.getCurrentToolId()
+            : null;
+          const path = editor && typeof editor.getPath === "function"
+            ? editor.getPath()
+            : "";
+          const isInteractingWithHandle = path.includes("handle") || currentTool === "line";
+          const isEditing = editingLineId.get() === shape.id || isInteractingWithHandle;
+          if (!isEditing) {
+            return [];
+          }
+          this._gettingHandles = true;
+          let handles;
+          try {
+            handles = super.getHandles(shape);
+          } finally {
+            this._gettingHandles = false;
+          }
+          return handles;
+        }
+
+        getGeometry(shape) {
+          const baseGeom = super.getGeometry(shape);
+          if (this._gettingHandles) {
+            return baseGeom;
+          }
+          if (shape.props && shape.props.isClosed) {
+            const isFilled = shape.props.fill && shape.props.fill !== "none";
+            const vertices = baseGeom && baseGeom.vertices;
+            if (vertices && vertices.length >= 3 && Polygon2d) {
+              const poly = new Polygon2d({
+                points: vertices,
+                isFilled: Boolean(isFilled)
+              });
+              if (typeof poly.getSegments !== "function") {
+                poly.getSegments = function () {
+                  return this.segments;
+                };
+              }
+              return poly;
+            }
+            if (baseGeom) {
+              baseGeom.isClosed = true;
+              baseGeom.isFilled = Boolean(isFilled);
+            }
+            return baseGeom;
+          }
+          return baseGeom;
+        }
+
+        component(shape) {
+          const geom = this.getGeometry(shape);
+          let d = geom && typeof geom.getSvgPathData === "function"
+            ? geom.getSvgPathData()
+            : "";
+          const isClosed = Boolean(shape.props && shape.props.isClosed);
+          if (isClosed && d && !d.trim().endsWith("Z") && !d.trim().endsWith("z")) {
+            d += " Z";
+          }
+          const strokeWidths = STROKE_SIZES || { s: 2, m: 3.5, l: 5, xl: 10 };
+          const baseWidth = (shape.props && strokeWidths[shape.props.size]) || 3.5;
+          const strokeWidth = baseWidth * ((shape.props && shape.props.scale) || 1);
+          const strokeColor = resolveColor(this.editor, shape.props && shape.props.color, "solid");
+          const isFilled = Boolean(isClosed && shape.props && shape.props.fill && shape.props.fill !== "none");
+          const fillColor = isFilled
+            ? resolveColor(this.editor, shape.props.color, shape.props.fill)
+            : "none";
+          const strokeDash = shape.props && shape.props.dash === "dashed"
+            ? `${strokeWidth * 2} ${strokeWidth * 2}`
+            : (shape.props && shape.props.dash === "dotted" ? `${strokeWidth} ${strokeWidth}` : undefined);
+          const Container = SVGContainer || "svg";
+
+          return React.createElement(
+            Container,
+            { id: shape.id, className: "tl-svg-container", style: { minWidth: 50, minHeight: 50 } },
+            React.createElement("path", {
+              d: d,
+              stroke: strokeColor,
+              strokeWidth: strokeWidth,
+              strokeDasharray: strokeDash,
+              fill: fillColor,
+              strokeLinecap: "round",
+              strokeLinejoin: "round",
+              pointerEvents: "all"
+            })
+          );
+        }
+
+        toSvg(shape, ctx) {
+          if (!shape.props || !shape.props.isClosed) {
+            if (typeof super.toSvg === "function") {
+              try {
+                return super.toSvg(shape, ctx);
+              } catch (_) {}
+            }
+            return null;
+          }
+          const isFilled = shape.props.fill && shape.props.fill !== "none";
+          const fillColor = isFilled
+            ? resolveColor(this.editor, shape.props.color, shape.props.fill)
+            : "none";
+          const strokeColor = resolveColor(this.editor, shape.props.color, "solid");
+          const strokeWidths = STROKE_SIZES || { s: 2, m: 3.5, l: 5, xl: 10 };
+          const baseWidth = strokeWidths[shape.props.size] || 3.5;
+          const strokeWidth = baseWidth * (shape.props.scale || 1);
+
+          const geom = this.getGeometry(shape);
+          let d = geom && typeof geom.getSvgPathData === "function"
+            ? geom.getSvgPathData()
+            : "";
+          if (d && !d.trim().endsWith("Z") && !d.trim().endsWith("z")) {
+            d += " Z";
+          }
+
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          path.setAttribute("d", d);
+          path.setAttribute("fill", fillColor);
+          path.setAttribute("stroke", strokeColor);
+          path.setAttribute("stroke-width", String(strokeWidth));
+          path.setAttribute("stroke-linecap", "round");
+          path.setAttribute("stroke-linejoin", "round");
+          return path;
+        }
+
+        hideSelectionBoundsBg = (shape) => {
+          return editingLineId.get() === shape.id;
+        };
+
+        hideSelectionBoundsFg = (shape) => {
+          return editingLineId.get() === shape.id;
+        };
+
+        canResize = (shape) => {
+          return editingLineId.get() !== shape.id;
+        };
+
+        hideResizeHandles = (shape) => {
+          return editingLineId.get() === shape.id;
+        };
+
+        hideRotateHandle = (shape) => {
+          return editingLineId.get() === shape.id;
+        };
+
+        onDoubleClickHandle(shape, handle) {
+          if (handle && handle.type === "vertex") {
+            const pts = { ...shape.props.points };
+            const keys = Object.keys(pts);
+            if (keys.length > 2) {
+              delete pts[handle.id];
+              return {
+                id: shape.id,
+                type: shape.type,
+                props: {
+                  points: pts
+                }
+              };
+            }
+          }
+          if (typeof super.onDoubleClickHandle === "function") {
+            return super.onDoubleClickHandle(shape, handle);
+          }
+        }
+
+        onResize(shape, info) {
+          if (typeof super.onResize === "function") {
+            const res = super.onResize(shape, info);
+            if (res) return res;
+          }
+          const { scaleX = 1, scaleY = 1, initialShape } = info;
+          if (!initialShape || !initialShape.props || !initialShape.props.points) {
+            return;
+          }
+          const nextPoints = {};
+          for (const [k, pt] of Object.entries(initialShape.props.points)) {
+            nextPoints[k] = {
+              ...pt,
+              x: pt.x * scaleX,
+              y: pt.y * scaleY
+            };
+          }
+          return {
+            props: {
+              points: nextPoints
+            }
+          };
+        }
+      }
+
+      CustomLineShapeUtil.type = "line";
+      const customShapeUtils = [CustomLineShapeUtil];
+
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && editingLineId.get()) {
+          clearEditingLine();
+        } else if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+          if (window.editor) {
+            const selected = window.editor.getSelectedShapes();
+            if (selected.length === 1 && selected[0].type === "line") {
+              toggleVertexEditMode();
+            }
+          }
+        }
+      });
+
+      function CustomToolbar(props) {
+        const [, setTick] = React.useState(0);
+        React.useEffect(() => {
+          if (!window.editor) return;
+          const unlisten = window.editor.on("change", () => {
+            setTick((t) => t + 1);
+          });
+          return () => {
+            if (typeof unlisten === "function") unlisten();
+          };
+        }, []);
+
+        const editor = window.editor;
+        const selectedShapes = editor && editor.getSelectedShapes ? editor.getSelectedShapes() : [];
+        const isSingleLineSelected = selectedShapes.length === 1 && selectedShapes[0].type === "line";
+        const isEditingVertices = isSingleLineSelected && editingLineId.get() === selectedShapes[0].id;
+
+        return React.createElement(
+          DefaultToolbar,
+          props,
+          React.createElement(SelectToolbarItem, null),
+          React.createElement(HandToolbarItem, null),
+          React.createElement(DrawToolbarItem, null),
+          React.createElement(EraserToolbarItem, null),
+          React.createElement(LineToolbarItem, null),
+          React.createElement(AssetToolbarItem, null),
+          React.createElement(
+            TldrawUiButton,
+            {
+              type: "tool",
+              title: "Edit vertices (Enter)",
+              "data-state": isEditingVertices ? "selected" : undefined,
+              disabled: !isSingleLineSelected && !editingLineId.get(),
+              onClick: () => {
+                toggleVertexEditMode();
+              }
+            },
+            React.createElement(
+              "svg",
+              {
+                width: 18,
+                height: 18,
+                viewBox: "0 0 24 24",
+                fill: "none",
+                stroke: "currentColor",
+                strokeWidth: "2",
+                strokeLinecap: "round",
+                strokeLinejoin: "round"
+              },
+              React.createElement("circle", { cx: "6", cy: "6", r: "3", fill: "currentColor" }),
+              React.createElement("circle", { cx: "18", cy: "18", r: "3", fill: "currentColor" }),
+              React.createElement("path", { d: "M8.5 8.5l7 7" }),
+              React.createElement("path", { d: "M12 4l8 8" })
+            )
+          ),
+          React.createElement(
+            TldrawUiButton,
+            {
+              type: "tool",
+              title: "Simplify selected lines (Ctrl-L)",
+              onClick: () => {
+                if (window.simplifySelectedLines) {
+                  window.simplifySelectedLines();
+                }
+              }
+            },
+            React.createElement(
+              "svg",
+              {
+                width: 18,
+                height: 18,
+                viewBox: "0 0 24 24",
+                fill: "none",
+                stroke: "currentColor",
+                strokeWidth: "2",
+                strokeLinecap: "round",
+                strokeLinejoin: "round"
+              },
+              React.createElement("path", {
+                d: "M12.5 21q -1.82 0 -5.458 .005a1.98 1.98 0 0 1 -1.881 -1.367l-3.064 -9.43a1.98 1.98 0 0 1 .719 -2.212l8.021 -5.828a1.98 1.98 0 0 1 2.326 0l8.021 5.828c.694 .504 .984 1.397 .719 2.212l-1.559 4.792"
+              }),
+              React.createElement("path", { d: "M16 19h6" })
+            )
+          ),
+          React.createElement(
+            TldrawUiButton,
+            {
+              type: "tool",
+              title: "Toggle open/closed shape",
+              onClick: () => {
+                if (window.toggleSelectedLinesClosed) {
+                  window.toggleSelectedLinesClosed();
+                }
+              }
+            },
+            React.createElement(
+              "svg",
+              {
+                width: 18,
+                height: 18,
+                viewBox: "0 0 24 24",
+                fill: "none",
+                stroke: "currentColor",
+                strokeWidth: "2",
+                strokeLinecap: "round",
+                strokeLinejoin: "round"
+              },
+              React.createElement("polygon", {
+                points: "12 3 20 8.5 17 18 7 18 4 8.5"
+              })
+            )
+          ),
+          React.createElement(
+            TldrawUiButton,
+            {
+              type: "tool",
+              title: "Toggle fill (solid/none)",
+              onClick: () => {
+                if (window.toggleSelectedLinesFill) {
+                  window.toggleSelectedLinesFill();
+                }
+              }
+            },
+            React.createElement(
+              "svg",
+              {
+                width: 18,
+                height: 18,
+                viewBox: "0 0 24 24",
+                fill: "none",
+                stroke: "currentColor",
+                strokeWidth: "2",
+                strokeLinecap: "round",
+                strokeLinejoin: "round"
+              },
+              React.createElement("path", {
+                d: "M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z",
+                fill: "currentColor"
+              })
+            )
+          )
+        );
+      }
+
+      function CustomFillPicker() {
+        const editor = window.editor;
+        const [, setTick] = React.useState(0);
+        React.useEffect(() => {
+          if (!window.editor) return;
+          const unlisten = window.editor.on("change", () => {
+            setTick((t) => t + 1);
+          });
+          return () => {
+            if (typeof unlisten === "function") unlisten();
+          };
+        }, []);
+
+        if (!editor) return null;
+
+        const selectedShapes = editor.getSelectedShapes
+          ? editor.getSelectedShapes()
+          : [];
+        const selectedLines = selectedShapes.filter((s) => s.type === "line");
+
+        let currentVal = "none";
+        if (selectedLines.length > 0) {
+          currentVal = selectedLines[0].props.fill || "none";
+        } else if (DefaultFillStyle) {
+          try {
+            currentVal = editor.getStyleForNextShape(DefaultFillStyle) || "none";
+          } catch (err) {
+            console.error("CustomFillPicker getStyleForNextShape caught error:", err);
+          }
+        }
+
+        const items = [
+          { value: "none", icon: "fill-none", title: "Fill None" },
+          { value: "solid", icon: "fill-solid", title: "Fill Solid" }
+        ];
+
+        const handleFillChange = (val) => {
+          editor.run(() => {
+            if (DefaultFillStyle) {
+              try {
+                editor.setStyleForNextShapes(DefaultFillStyle, val);
+              } catch (err) {
+                console.error("CustomFillPicker setStyleForNextShapes caught error:", err);
+              }
+            }
+            if (selectedLines.length > 0) {
+              const updates = selectedLines.map((line) => {
+                const nextProps = { fill: val };
+                if (val !== "none" && !line.props.isClosed) {
+                  nextProps.isClosed = true;
+                }
+                return {
+                  id: line.id,
+                  type: line.type,
+                  props: nextProps
+                };
+              });
+              editor.updateShapes(updates);
+            }
+            if (selectedShapes.length > selectedLines.length && DefaultFillStyle) {
+              try {
+                editor.setStyleForSelectedShapes(DefaultFillStyle, val);
+              } catch (err) {
+                console.error("CustomFillPicker setStyleForSelectedShapes caught error:", err);
+              }
+            }
+          });
+        };
+
+        if (StylePanelButtonPicker) {
+          try {
+            return React.createElement(StylePanelButtonPicker, {
+              title: "Fill",
+              uiType: "fill",
+              style: DefaultFillStyle,
+              items: items,
+              value: { type: "shared", value: currentVal },
+              onValueChange: (_style, val) => handleFillChange(val)
+            });
+          } catch (_) {}
+        }
+
+        return React.createElement(
+          "div",
+          { className: "tlui-buttons__grid", style: { display: "flex", gap: "4px" } },
+          items.map((it) =>
+            React.createElement(
+              TldrawUiButton,
+              {
+                key: it.value,
+                type: "icon",
+                title: it.title,
+                "data-state": currentVal === it.value ? "selected" : undefined,
+                onClick: () => handleFillChange(it.value)
+              },
+              it.value === "none" ? "None" : "Solid"
+            )
+          )
+        );
+      }
+
+      function CustomPalettePicker() {
+        const editor = window.editor;
+        const [, setTick] = React.useState(0);
+        const [isPickingBg, setIsPickingBg] = React.useState(false);
+
+        React.useEffect(() => {
+          if (!editor) return;
+          const unlistenStore = editor.store && typeof editor.store.listen === "function"
+            ? editor.store.listen(() => setTick((t) => t + 1))
+            : null;
+          const unlistenChange = editor.on
+            ? editor.on("change", () => setTick((t) => t + 1))
+            : null;
+          return () => {
+            if (typeof unlistenStore === "function") unlistenStore();
+            if (typeof unlistenChange === "function") unlistenChange();
+          };
+        }, [editor]);
+
+        React.useEffect(() => {
+          if (!isPickingBg) return;
+
+          const handleOutsidePointer = (e) => {
+            if (e.target && e.target.closest(".palette-picker-container")) {
+              return;
+            }
+            setIsPickingBg(false);
+          };
+
+          const handleEditorEvent = (info) => {
+            if (info && info.name === "pointer_down") {
+              setIsPickingBg(false);
+            }
+          };
+
+          window.addEventListener("pointerdown", handleOutsidePointer, true);
+          const unlistenEditor = editor && editor.on ? editor.on("event", handleEditorEvent) : null;
+
+          return () => {
+            window.removeEventListener("pointerdown", handleOutsidePointer, true);
+            if (typeof unlistenEditor === "function") unlistenEditor();
+          };
+        }, [isPickingBg, editor]);
+
+        if (!editor || !window.getPalettes) return null;
+
+        const palettes = window.getPalettes();
+        const currentPaletteId = window.getCurrentPaletteId ? window.getCurrentPaletteId() : "cc-29";
+        const currentBgColor = window.getPageBackgroundColor ? window.getPageBackgroundColor() : "#f2f0e5";
+        const selectedShapes = editor.getSelectedShapes ? editor.getSelectedShapes() : [];
+        const selectedLines = selectedShapes.filter((s) => s.type === "line");
+        let activeColor = window.getCurrentActiveColor ? window.getCurrentActiveColor() : null;
+        if (selectedLines.length > 0 && selectedLines[0].props && selectedLines[0].props.color) {
+          activeColor = selectedLines[0].props.color;
+        }
+        const activePalette = palettes[currentPaletteId] || palettes["cc-29"];
+
+        return React.createElement(
+          "div",
+          { className: "palette-picker-container" },
+          React.createElement(
+            "div",
+            { className: "palette-select-header" },
+            React.createElement(
+              "select",
+              {
+                className: "palette-dropdown",
+                value: currentPaletteId,
+                onChange: (e) => {
+                  if (window.setPagePalette) {
+                    window.setPagePalette(e.target.value);
+                    setTick((t) => t + 1);
+                  }
+                }
+              },
+              Object.keys(palettes).map((id) =>
+                React.createElement("option", { key: id, value: id }, palettes[id].name)
+              )
+            ),
+            React.createElement(
+              "button",
+              {
+                type: "button",
+                className: "palette-bg-mode-btn",
+                "data-state": isPickingBg ? "selected" : undefined,
+                title: isPickingBg ? "Cancel background picking" : "Pick canvas background color",
+                onClick: () => setIsPickingBg((v) => !v)
+              },
+              React.createElement("span", {
+                className: "palette-bg-preview-chip",
+                style: { backgroundColor: currentBgColor }
+              }),
+              React.createElement("span", { className: "palette-bg-btn-label" }, "BG")
+            )
+          ),
+          activePalette && activePalette.type === "named" && StylePanelColorPicker
+            ? React.createElement(StylePanelColorPicker, null)
+            : React.createElement(
+                "div",
+                { className: "palette-swatches-grid" },
+                (activePalette ? activePalette.colors : []).map((hex) => {
+                  const isSelected = isPickingBg
+                    ? currentBgColor && currentBgColor.toLowerCase() === hex.toLowerCase()
+                    : activeColor && activeColor.toLowerCase() === hex.toLowerCase();
+
+                  return React.createElement("button", {
+                    key: hex,
+                    type: "button",
+                    className: "palette-swatch-btn",
+                    "data-state": isSelected ? "selected" : undefined,
+                    style: { backgroundColor: hex },
+                    title: isPickingBg ? `Set background to ${hex}` : hex,
+                    onClick: () => {
+                      if (isPickingBg) {
+                        if (window.setPageBackgroundColor) {
+                          window.setPageBackgroundColor(hex);
+                          setTick((t) => t + 1);
+                        }
+                      } else {
+                        if (window.setCurrentActiveColor) {
+                          window.setCurrentActiveColor(hex);
+                        }
+                      }
+                    }
+                  });
+                })
+              )
+        );
+      }
+
+      function CustomStylePanel(props) {
+        if (!DefaultStylePanel) return null;
+
+        return React.createElement(
+          DefaultStylePanel,
+          props,
+          StylePanelSection
+            ? React.createElement(
+                StylePanelSection,
+                null,
+                React.createElement(CustomPalettePicker, null)
+              )
+            : null,
+          StylePanelSection
+            ? React.createElement(
+                StylePanelSection,
+                null,
+                React.createElement(CustomFillPicker, null),
+                StylePanelSizePicker
+                  ? React.createElement(StylePanelSizePicker, null)
+                  : null
+              )
+            : null
+        );
+      }
+
+      let licenseKey = undefined;
+      try {
+        const keyRes = await fetch("./key.txt");
+        if (keyRes.ok) {
+          const keyText = (await keyRes.text()).trim();
+          if (keyText) licenseKey = keyText;
+        }
+      } catch (_) {}
+
+      const container = document.getElementById("app");
+      const root = createRoot(container);
+
+      root.render(
+        React.createElement(Tldraw, {
+          licenseKey: licenseKey,
+          options: {
+            createTextOnCanvasDoubleClick: false
+          },
+          shapeUtils: customShapeUtils,
+          components: {
+            Toolbar: CustomToolbar,
+            StylePanel: CustomStylePanel
+          },
+          onMount: (editor) => {
+            window.editor = editor;
+            const selectIdle = editor.getStateDescendant("select.idle");
+            if (selectIdle) {
+              selectIdle.handleDoubleClickOnCanvas = () => {};
+            }
+            editor.setStyleForNextShapes(DefaultDashStyle, "solid");
+            editor.setCurrentTool("draw");
+            const initialColor = (window.getCurrentActiveColor &&
+              window.getCurrentActiveColor()) || "#212123";
+            syncActiveThemeColor(initialColor);
+            editor.on("event", (info) => {
+              if (info.name === "pointer_up") {
+                setTimeout(() => {
+                  if (window.convertFinishedDraw) {
+                    window.convertFinishedDraw();
+                  }
+                }, 0);
+              }
+            });
+            editor.on("change", () => {
+              const curEditing = editingLineId.get();
+              if (curEditing) {
+                const selected = editor.getOnlySelectedShape();
+                if (!selected || selected.id !== curEditing) {
+                  clearEditingLine();
+                }
+              }
+              if (editor.getCurrentToolId() === "draw" && DefaultDashStyle) {
+                const curDash = editor.getStyleForNextShape(DefaultDashStyle);
+                if (curDash !== "solid") {
+                  editor.setStyleForNextShapes(DefaultDashStyle, "solid");
+                }
+              }
+            });
+            window.dispatchEvent(new CustomEvent("tldraw-ready", { detail: editor }));
+          }
+        })
+      );
+    </script>
+    <script type="application/x-scittle" src="pinterest.cljs"></script>
+    <script type="application/x-scittle" src="main.cljs"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="pinterest-root"></div>
+  </body>
+</html>

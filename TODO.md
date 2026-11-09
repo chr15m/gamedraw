@@ -4,7 +4,7 @@
 
 - [x] Hide the 'hand' to move on mobile.
 - [x] Put the undo/redo/delete/duplicate icons on one line together below the page name.
-- [ ] Previously selected pin board is not being recalled.
+- [x] Previously selected pin board is not being recalled.
 
 - [x] Each selected shape should get its own dotted-line box around it.
 - [x] When drag-rectangle selecting shapes inside other shapes it should only select shapes that are completely within the rectangle.

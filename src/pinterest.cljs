@@ -5,7 +5,14 @@
 (defonce username-atom (atom nil))
 (defonce last-sync-atom (atom nil))
 (defonce boards-atom (atom {}))
-(defonce selected-board-atom (atom "all"))
+(defn load-saved-board []
+  (try
+    (or (when (exists? js/window.localStorage)
+          (.getItem js/localStorage "pinterest:selected-board"))
+        "all")
+    (catch :default _ "all")))
+
+(defonce selected-board-atom (atom (load-saved-board)))
 (defonce all-pins-atom (atom []))
 (defonce active-index-atom (atom 0))
 (defonce shuffle-mode-atom (atom false))
@@ -20,6 +27,16 @@
 (def idb-boards-key "pinterest:boards")
 (def idb-pins-key "pinterest:pins:all")
 (def idb-selected-board-key "pinterest:selected-board")
+
+(defn set-selected-board! [b]
+  (let [val (or b "all")]
+    (reset! selected-board-atom val)
+    (try
+      (when (exists? js/window.localStorage)
+        (.setItem js/localStorage "pinterest:selected-board" val))
+      (catch :default _ nil))
+    (when-let [idb (.-idbKeyval js/window)]
+      (.set idb idb-selected-board-key val))))
 
 (defn get-idb []
   (.-idbKeyval js/window))
@@ -149,7 +166,9 @@
     (if (= board-sel "all")
       all
       (filter (fn [p]
-                (let [bname (get-in p [:board :name])]
+                (let [bname (or (get-in p [:board :name])
+                                (get-in p [:board "name"])
+                                (:board-name p))]
                   (= (when bname (as-name-str bname)) board-sel)))
               all))))
 
@@ -227,7 +246,8 @@
             saved-board (p/catch (.get idb idb-selected-board-key) (fn [_] nil))]
       (when saved-user (reset! username-atom saved-user))
       (when saved-sync (reset! last-sync-atom saved-sync))
-      (when saved-board (reset! selected-board-atom saved-board))
+      (when (and saved-board (not= saved-board "all"))
+        (set-selected-board! saved-board))
       (when saved-boards
         (let [raw-boards (js->clj saved-boards :keywordize-keys false)
               normalized (into {}
@@ -400,6 +420,8 @@
           (let [opt-all (.createElement js/document "option")]
             (set! (.-value opt-all) "all")
             (set! (.-innerText opt-all) "All Pins")
+            (when (= @selected-board-atom "all")
+              (set! (.-selected opt-all) true))
             (.appendChild board-select opt-all))
           (doseq [[bname bdata] @boards-atom]
             (let [name-str (as-name-str (or (:name bdata) bname))
@@ -409,12 +431,18 @@
               (when (= name-str @selected-board-atom)
                 (set! (.-selected opt) true))
               (.appendChild board-select opt)))
+          (when (and (not= @selected-board-atom "all")
+                     (not (contains? @boards-atom @selected-board-atom)))
+            (let [opt (.createElement js/document "option")]
+              (set! (.-value opt) @selected-board-atom)
+              (set! (.-innerText opt) @selected-board-atom)
+              (set! (.-selected opt) true)
+              (.appendChild board-select opt)))
+          (set! (.-value board-select) (or @selected-board-atom "all"))
           (.addEventListener board-select "change"
             (fn [e]
               (let [b (.. e -target -value)]
-                (reset! selected-board-atom b)
-                (when-let [idb (get-idb)]
-                  (.set idb idb-selected-board-key b))
+                (set-selected-board! b)
                 (reset! active-index-atom 0)
                 (when @shuffle-mode-atom (update-shuffled-order!))
                 (trigger-prefetch)

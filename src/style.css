@@ -129,6 +129,65 @@ html, body, #app {
 .menu-item:hover { background: #f0eee6; }
 .menu-item .ti { font-size: 16px; color: var(--muted); }
 
+.menu-divider {
+  height: 1px;
+  background: var(--panel-border);
+  margin: 6px 0;
+}
+
+.menu-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px 4px 12px;
+}
+
+.menu-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+}
+
+.menu-section-action {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.menu-section-action:hover {
+  background: #f0eee6;
+  color: var(--text);
+}
+.menu-section-action .ti { font-size: 14px; }
+
+.menu-pages-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.page-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.menu-item.active {
+  background: rgba(68, 101, 233, 0.1);
+  color: var(--primary);
+  font-weight: 600;
+}
+.menu-item.active .ti {
+  color: var(--primary);
+}
+
 .palette-toggle-btn {
   position: fixed;
   top: 10px;

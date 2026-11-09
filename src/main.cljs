@@ -610,13 +610,33 @@
 ;; Persistence (IndexedDB pages)
 ;; ---------------------------------------------------------------------------
 
+(defonce all-pages (r/atom []))
+
 (defn idb [] (.-idbKeyval js/window))
+
+(defn refresh-pages! []
+  (if (idb)
+    (-> (.keys (idb))
+        (.then (fn [ks]
+                 (let [prefix "sketchthing:"
+                       cur (:page @app)
+                       stored (->> (array-seq ks)
+                                   (filter #(.startsWith (str %) prefix))
+                                   (mapv #(subs (str %) (count prefix))))
+                       all-p (-> (conj stored cur)
+                                 (distinct)
+                                 (sort)
+                                 (vec))]
+                   (reset! all-pages all-p))))
+        (.catch (fn [e] (js/console.error "failed to fetch pages" e))))
+    (reset! all-pages [(:page @app)])))
 
 (defn save-page! []
   (let [st @app]
     (when (and (idb) (:page st))
       (-> (.set (idb) (str "sketchthing:" (:page st))
                 (clj->js {:shapes (:shapes st) :trace (:trace st) :palette (:palette st)}))
+          (.then (fn [_] (refresh-pages!)))
           (.catch (fn [e] (js/console.error "save failed" e)))))))
 
 (defn schedule-save! []
@@ -868,13 +888,18 @@
                        (switch-page! v)
                        (.blur (.-target e)))))}]))
 
+(defn toggle-menu! []
+  (let [opening? (not (:menu-open @app))]
+    (when opening? (refresh-pages!))
+    (swap! app assoc :menu-open opening?)))
+
 (defn top-bar []
   (let [st @app]
     [:div.top-bar
      [:button.icon-btn.menu-btn
       {:title "Menu"
        :class (when (:menu-open st) "active")
-       :onClick #(swap! app update :menu-open not)}
+       :onClick toggle-menu!}
       [:i.ti.ti-menu-2]]
      [page-name-input]
      [:button.icon-btn {:title "Undo (Ctrl-Z)" :onClick undo!} [:i.ti.ti-arrow-back-up]]
@@ -964,14 +989,37 @@
      [:span.palette-chip {:style {:background col}}]]))
 
 (defn hamburger-menu []
-  (let [close! #(swap! app assoc :menu-open false)]
+  (let [close! #(swap! app assoc :menu-open false)
+        cur-page (:page @app)
+        pages @all-pages]
     [:div.hamburger-menu
      [:button.menu-item {:onClick (fn [] (close!) (clear-page!))}
-      [:i.ti.ti-trash] "Clear page"]
+      [:i.ti.ti-eraser] "Clear canvas"]
      [:button.menu-item {:onClick (fn [] (close!) (export-svg! false))}
       [:i.ti.ti-download] "Export SVG"]
      [:button.menu-item {:onClick (fn [] (close!) (export-svg! true))}
-      [:i.ti.ti-file-export] "Export selection"]]))
+      [:i.ti.ti-file-export] "Export selection"]
+     [:div.menu-divider]
+     [:div.menu-section-header
+      [:span.menu-section-title "Pages"]
+      [:button.menu-section-action
+       {:title "New page"
+        :onClick (fn []
+                   (close!)
+                   (let [new-name (str "page-" (inc (count pages)))]
+                     (switch-page! new-name)))}
+       [:i.ti.ti-plus]]]
+     [:div.menu-pages-list
+      (for [p pages]
+        ^{:key p}
+        [:button.menu-item.page-item
+         {:class (when (= p cur-page) "active")
+          :onClick (fn []
+                     (close!)
+                     (when (not= p cur-page)
+                       (switch-page! p)))}
+         [:i.ti {:class (if (= p cur-page) "ti-file-check" "ti-file")}]
+         [:span.page-item-name p]])]]))
 
 (defn root []
   [:div.app-root
@@ -1017,6 +1065,7 @@
                (when (or (not= (:shapes old) (:shapes new))
                          (not= (:trace old) (:trace new)))
                  (schedule-save!))))
-  (load-page! (:page @app)))
+  (load-page! (:page @app))
+  (refresh-pages!))
 
 (init!)

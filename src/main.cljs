@@ -1121,6 +1121,17 @@
         [:button.mini-btn {:title "Remove trace image" :onClick #(swap! app assoc :trace nil)}
          [:i.ti.ti-x]])]]))
 
+(defn palette-toggle []
+  (let [st @app
+        open? (:palette-open st)
+        col (get-in st [:palette :color])]
+    [:button.palette-toggle-btn
+     {:class (when open? "active")
+      :title "Toggle palette"
+      :onClick #(swap! app update :palette-open not)}
+     [:i.ti.ti-palette]
+     [:span.palette-chip {:style {:background col}}]]))
+
 (defn toolbar []
   (let [st @app
         zoom-open? (:zoom-open st)
@@ -1147,18 +1158,9 @@
          [:button.icon-btn {:title "Zoom in" :onClick #(zoom-by 1.25 (/ (.-innerWidth js/window) 2) (/ (.-innerHeight js/window) 2))}
           [:i.ti.ti-zoom-in]]
          [:button.icon-btn {:title "Reset zoom (100%)" :onClick reset-zoom}
-          [:i.ti.ti-zoom-reset]]])]]))
-
-(defn palette-toggle []
-  (let [st @app
-        open? (:palette-open st)
-        col (get-in st [:palette :color])]
-    [:button.palette-toggle-btn
-     {:class (when open? "active")
-      :title "Toggle palette"
-      :onClick #(swap! app update :palette-open not)}
-     [:i.ti.ti-palette]
-     [:span.palette-chip {:style {:background col}}]]))
+          [:i.ti.ti-zoom-reset]]])]
+     [:div.toolbar-divider]
+     [palette-toggle]]))
 
 (defn hamburger-menu []
   (let [close! #(swap! app assoc :menu-open false)
@@ -1223,7 +1225,6 @@
      [:div.menu-backdrop {:onClick #(swap! app assoc :menu-open false)}])
    (when (:menu-open @app)
      [hamburger-menu])
-   [palette-toggle]
    (when (:palette-open @app)
      [style-panel])
    [toolbar]])

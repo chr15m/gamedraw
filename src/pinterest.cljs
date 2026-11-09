@@ -19,6 +19,7 @@
 (def idb-last-sync-key "pinterest:last-sync")
 (def idb-boards-key "pinterest:boards")
 (def idb-pins-key "pinterest:pins:all")
+(def idb-selected-board-key "pinterest:selected-board")
 
 (defn get-idb []
   (.-idbKeyval js/window))
@@ -29,7 +30,8 @@
       (.set idb idb-username-key (or @username-atom ""))
       (.set idb idb-last-sync-key (or @last-sync-atom 0))
       (.set idb idb-boards-key (clj->js @boards-atom))
-      (.set idb idb-pins-key (clj->js @all-pins-atom)))))
+      (.set idb idb-pins-key (clj->js @all-pins-atom))
+      (.set idb idb-selected-board-key (or @selected-board-atom "all")))))
 
 (defn fetch-json [url]
   (p/let [res (js/fetch url)]
@@ -221,9 +223,11 @@
     (p/let [saved-user (p/catch (.get idb idb-username-key) (fn [_] nil))
             saved-sync (p/catch (.get idb idb-last-sync-key) (fn [_] nil))
             saved-boards (p/catch (.get idb idb-boards-key) (fn [_] nil))
-            saved-pins (p/catch (.get idb idb-pins-key) (fn [_] nil))]
+            saved-pins (p/catch (.get idb idb-pins-key) (fn [_] nil))
+            saved-board (p/catch (.get idb idb-selected-board-key) (fn [_] nil))]
       (when saved-user (reset! username-atom saved-user))
       (when saved-sync (reset! last-sync-atom saved-sync))
+      (when saved-board (reset! selected-board-atom saved-board))
       (when saved-boards
         (let [raw-boards (js->clj saved-boards :keywordize-keys false)
               normalized (into {}
@@ -407,11 +411,14 @@
               (.appendChild board-select opt)))
           (.addEventListener board-select "change"
             (fn [e]
-              (reset! selected-board-atom (.. e -target -value))
-              (reset! active-index-atom 0)
-              (when @shuffle-mode-atom (update-shuffled-order!))
-              (trigger-prefetch)
-              (render-ui!)))
+              (let [b (.. e -target -value)]
+                (reset! selected-board-atom b)
+                (when-let [idb (get-idb)]
+                  (.set idb idb-selected-board-key b))
+                (reset! active-index-atom 0)
+                (when @shuffle-mode-atom (update-shuffled-order!))
+                (trigger-prefetch)
+                (render-ui!))))
           (.appendChild left-group board-select)
 
           ;; Sort toggle button

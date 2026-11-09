@@ -3,7 +3,7 @@
 ## TODO
 
 - [x] Put undo and redo into the bottom toolbar just to the right of the magnifying glass.
-- [ ] Put delete/duplicate actions from top bar to bottom, to the left of undo/redo.
+- [x] Put delete/duplicate actions from top bar to bottom, to the left of undo/redo.
 
 - [ ] Threshold pinch to zoom so two finger dragging doesn't trigger it so easily.
 

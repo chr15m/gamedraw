@@ -136,6 +136,10 @@ const shapeCount = (page) => page.evaluate(() =>
   await drawStroke(page, pts, 4);
   await selectShape(page, 250 + 20 * 16, 380 + Math.sin(20 / 2) * 60);
   const qBefore = await qCount(page);
+  if (!(await page.$('.style-panel'))) {
+    await page.click('.palette-toggle-btn');
+    await page.waitForSelector('.style-panel');
+  }
   await page.click('.mini-btn:has-text("simplify")');
   await page.waitForTimeout(200);
   const qAfter = await qCount(page);
@@ -218,6 +222,10 @@ const shapeCount = (page) => page.evaluate(() =>
   pass('Phase 5 IndexedDB page persistence');
 
   // trace layer via file input
+  if (!(await page.$('.style-panel'))) {
+    await page.click('.palette-toggle-btn');
+    await page.waitForSelector('.style-panel');
+  }
   const png = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC',
     'base64');

@@ -81,10 +81,48 @@ html, body, #app {
 .icon-btn .ti { font-size: 18px; }
 .icon-btn:hover { background: #f0eee6; }
 
+.palette-toggle-btn {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 25;
+  height: 34px;
+  min-width: 34px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+.palette-toggle-btn .ti { font-size: 18px; }
+.palette-toggle-btn:hover { background: #f0eee6; }
+.palette-toggle-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.palette-chip {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  display: inline-block;
+  flex-shrink: 0;
+}
+.palette-toggle-btn.active .palette-chip {
+  border-color: #fff;
+}
+
 /* Style panel ------------------------------------------------------------- */
 .style-panel {
   position: fixed;
-  top: 10px;
+  top: 52px;
   right: 10px;
   width: 196px;
   background: var(--panel);
@@ -92,7 +130,7 @@ html, body, #app {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 10px;
-  z-index: 20;
+  z-index: 24;
 }
 
 .style-head {
@@ -514,6 +552,6 @@ html, body, #app {
 }
 
 
-/* Position the Ref toggle to the left of the style panel */
-.pin-toggle-btn { right: 216px; }
-@media (max-width: 560px) { .pin-toggle-btn { right: 186px; } }
+/* Position the Ref toggle to the left of the palette toggle */
+.pin-toggle-btn { right: 68px; }
+@media (max-width: 560px) { .pin-toggle-btn { right: 68px; } }

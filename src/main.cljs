@@ -43,6 +43,7 @@
    {:tool :draw
     :viewport {:x 0.0 :y 0.0 :zoom 1.0}
     :palette {:palette-id "cc-29" :color "#212123" :bg "#f2f0e5" :bg-mode false}
+    :palette-open false
     :size "m"
     :fill "none"
     :drawing []
@@ -910,11 +911,24 @@
    [:button.icon-btn {:title "Reset zoom (100%)" :onClick reset-zoom}
     [:i.ti.ti-zoom-reset]]])
 
+(defn palette-toggle []
+  (let [st @app
+        open? (:palette-open st)
+        col (get-in st [:palette :color])]
+    [:button.palette-toggle-btn
+     {:class (when open? "active")
+      :title "Toggle palette"
+      :onClick #(swap! app update :palette-open not)}
+     [:i.ti.ti-palette]
+     [:span.palette-chip {:style {:background col}}]]))
+
 (defn root []
   [:div.app-root
    [canvas]
    [top-bar]
-   [style-panel]
+   [palette-toggle]
+   (when (:palette-open @app)
+     [style-panel])
    [toolbar]])
 
 ;; ---------------------------------------------------------------------------

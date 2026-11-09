@@ -641,33 +641,21 @@
 ;; ---------------------------------------------------------------------------
 
 (defn start-pinch []
-  (let [pts (vec (take 2 (vals @active-pointers)))
-        _ (when (< (count pts) 2) (throw (js/Error. "need two pointers")))
-        [a b] pts
+  (let [[a b] (map second @active-pointers)
+        _ (when (or (nil? a) (nil? b)) (throw (js/Error. "need two pointers")))
         m {:x (/ (+ (nth a 0) (nth b 0)) 2) :y (/ (+ (nth a 1) (nth b 1)) 2)}
         d (js/Math.hypot (- (nth a 0) (nth b 0)) (- (nth a 1) (nth b 1)))
         st @app]
-    {:dist (max d 1)
-     :start-m m
-     :viewport (:viewport st)
-     :world (client->world st (:x m) (:y m))
-     :zooming false}))
+    {:dist (max d 1) :viewport (:viewport st) :world (client->world st (:x m) (:y m))}))
 
 (defn apply-pinch []
-  (when-let [{:keys [dist start-m viewport world zooming]} @pinch]
-    (let [pts (vec (take 2 (vals @active-pointers)))]
+  (when-let [{:keys [dist viewport world]} @pinch]
+    (let [pts (vec (vals @active-pointers))]
       (when (>= (count pts) 2)
         (let [[a b] pts
               m {:x (/ (+ (nth a 0) (nth b 0)) 2) :y (/ (+ (nth a 1) (nth b 1)) 2)}
               d (js/Math.hypot (- (nth a 0) (nth b 0)) (- (nth a 1) (nth b 1)))
-              dist-delta (js/Math.abs (- d dist))
-              ratio (/ d dist)
-              now-zooming? (or zooming (and (> dist-delta 32) (> (js/Math.abs (- ratio 1.0)) 0.15)))
-              z (if now-zooming?
-                  (max 0.1 (min 8 (* (:zoom viewport) ratio)))
-                  (:zoom viewport))]
-          (when (and now-zooming? (not zooming))
-            (swap! pinch assoc :zooming true))
+              z (max 0.1 (min 8 (* (:zoom viewport) (/ d dist))))]
           (swap! app assoc :viewport {:zoom z
                                       :x (- (:x m) (* (:x world) z))
                                       :y (- (:y m) (* (:y world) z))}))))))

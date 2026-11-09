@@ -46,6 +46,7 @@
     :palette-open false
     :menu-open false
     :zoom-open false
+    :actions-open false
     :size "m"
     :fill "none"
     :drawing []
@@ -1129,6 +1130,7 @@
 (defn toolbar []
   (let [st @app
         zoom-open? (:zoom-open st)
+        actions-open? (:actions-open st)
         zoom-pct (str (js/Math.round (* 100 (get-in st [:viewport :zoom]))) "%")]
     [:div.toolbar
      [tool-button :draw "ti-pencil" "Draw"]
@@ -1153,8 +1155,26 @@
           [:i.ti.ti-zoom-in]]
          [:button.icon-btn {:title "Reset zoom (100%)" :onClick reset-zoom}
           [:i.ti.ti-zoom-reset]]])]
-     [:button.icon-btn {:title "Delete (Del)" :onClick delete-selection!} [:i.ti.ti-trash]]
-     [:button.icon-btn {:title "Duplicate (Ctrl-D)" :onClick duplicate!} [:i.ti.ti-copy]]
+     [:div.actions-control-wrap
+      (when actions-open?
+        [:div.actions-backdrop {:onClick #(swap! app assoc :actions-open false)}])
+      [:button.icon-btn.actions-toggle-btn
+       {:class (when actions-open? "active")
+        :title "More actions"
+        :onClick #(swap! app update :actions-open not)}
+       [:i.ti.ti-dots-vertical]]
+      (when actions-open?
+        [:div.actions-popout
+         [:button.icon-btn {:title "Delete (Del)"
+                            :onClick (fn []
+                                       (swap! app assoc :actions-open false)
+                                       (delete-selection!))}
+          [:i.ti.ti-trash]]
+         [:button.icon-btn {:title "Duplicate (Ctrl-D)"
+                            :onClick (fn []
+                                       (swap! app assoc :actions-open false)
+                                       (duplicate!))}
+          [:i.ti.ti-copy]]])]
      [:button.icon-btn {:title "Undo (Ctrl-Z)" :onClick undo!} [:i.ti.ti-arrow-back-up]]
      [:button.icon-btn {:title "Redo (Ctrl-Y)" :onClick redo!} [:i.ti.ti-arrow-forward-up]]
      [:div.toolbar-divider]

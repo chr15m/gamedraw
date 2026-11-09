@@ -510,6 +510,41 @@ html, body, #app {
   color: var(--text);
 }
 
+.actions-control-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.actions-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 22;
+  background: transparent;
+}
+
+.actions-toggle-btn {
+  position: relative;
+  z-index: 24;
+}
+
+.actions-popout {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  z-index: 25;
+  white-space: nowrap;
+}
+
 @media (max-width: 640px), (pointer: coarse) {
   .tool-pan-btn { display: none !important; }
 }

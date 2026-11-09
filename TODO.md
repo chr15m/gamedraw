@@ -2,6 +2,8 @@
 
 ## TODO
 
+- [x] Move delete/duplicate buttons under a vertical dots icon that pops up.
+
 - [x] Put undo and redo into the bottom toolbar just to the right of the magnifying glass.
 - [x] Put delete/duplicate actions from top bar to bottom, to the left of undo/redo.
 

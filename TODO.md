@@ -11,7 +11,7 @@
 
 - [x] Move pallette toggle button to bottom right, left-align the other tools there.
 - [x] Order the tools: Draw, erase, select.
-- [ ] Remove the word 'Canvas' from the pin board close button.
+- [x] Remove the word 'Canvas' from the pin board close button.
 
 - [ ] Threshold pinch to zoom so two finger dragging doesn't trigger it so easily.
 

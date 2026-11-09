@@ -540,9 +540,11 @@ html, body, #app {
   right: 12px;
   z-index: 300;
   height: 34px;
-  padding: 0 12px;
+  min-width: 34px;
+  padding: 0 8px;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   background: var(--color-panel, #ffffff);
   color: var(--color-text, #111827);

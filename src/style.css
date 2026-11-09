@@ -56,11 +56,17 @@ html, body, #app {
 .page-input {
   border: 1px solid var(--panel-border);
   border-radius: 6px;
-  padding: 4px 6px;
+  padding: 4px 8px;
   font-size: 13px;
   color: var(--text);
   background: #fff;
   height: 30px;
+  min-width: 110px;
+  max-width: 150px;
+  outline: none;
+}
+.page-input:focus {
+  border-color: var(--primary);
 }
 
 .icon-btn {

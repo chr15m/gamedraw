@@ -5,7 +5,7 @@
 - [x] Change UI words into tabler.io icons
 - [x] Put the palette interface behind an icon toggle
 - [x] Put a hamburger menu in the top left
-- [ ] Instead of a literal date, the page name should be a string
+- [x] Instead of a literal date, the page name should be a string
 - [ ] List of all pages in the hamburger menu under 'pages'
 
 ## Next

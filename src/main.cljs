@@ -832,6 +832,42 @@
    [:i.ti {:class icon-class}]
    [:span {:style {:display "none"}} label]])
 
+(defn switch-page! [new-page]
+  (let [p (str/trim (str new-page))]
+    (when (and (seq p) (not= p (:page @app)))
+      (save-page!)
+      (load-page! p))))
+
+(defonce page-input-val (r/atom nil))
+
+(defn page-name-input []
+  (let [cur-page (:page @app)
+        val (or @page-input-val cur-page)]
+    [:input.page-input
+     {:type "text"
+      :placeholder "Page name"
+      :value val
+      :ref (fn [el]
+             (when el
+               (set! (.-onchange el)
+                     (fn [e]
+                       (let [v (.. e -target -value)]
+                         (reset! page-input-val nil)
+                         (switch-page! v))))))
+      :onChange (fn [e]
+                  (let [v (.. e -target -value)]
+                    (reset! page-input-val v)))
+      :onBlur (fn [e]
+                (let [v (.. e -target -value)]
+                  (reset! page-input-val nil)
+                  (switch-page! v)))
+      :onKeyDown (fn [e]
+                   (when (= (.-key e) "Enter")
+                     (let [v (.. e -target -value)]
+                       (reset! page-input-val nil)
+                       (switch-page! v)
+                       (.blur (.-target e)))))}]))
+
 (defn top-bar []
   (let [st @app]
     [:div.top-bar
@@ -840,8 +876,7 @@
        :class (when (:menu-open st) "active")
        :onClick #(swap! app update :menu-open not)}
       [:i.ti.ti-menu-2]]
-     [:input.page-input {:type "date" :value (:page st)
-                         :onChange (fn [e] (load-page! (.. e -target -value)))}]
+     [page-name-input]
      [:button.icon-btn {:title "Undo (Ctrl-Z)" :onClick undo!} [:i.ti.ti-arrow-back-up]]
      [:button.icon-btn {:title "Redo (Ctrl-Y)" :onClick redo!} [:i.ti.ti-arrow-forward-up]]
      [:button.icon-btn {:title "Delete (Del)" :onClick delete-selection!} [:i.ti.ti-trash]]

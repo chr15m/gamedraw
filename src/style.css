@@ -191,7 +191,7 @@ html, body, #app {
 .palette-toggle-btn {
   position: fixed;
   top: 10px;
-  right: 10px;
+  right: 62px;
   z-index: 25;
   height: 34px;
   min-width: 34px;
@@ -659,6 +659,9 @@ html, body, #app {
 }
 
 
-/* Position the Ref toggle to the left of the palette toggle */
-.pin-toggle-btn { right: 68px; }
-@media (max-width: 560px) { .pin-toggle-btn { right: 68px; } }
+/* Position the pin UI toggle to the right of the palette toggle */
+.pin-toggle-btn { right: 10px; }
+@media (max-width: 560px) {
+  .pin-toggle-btn { right: 10px; }
+  .palette-toggle-btn { right: 62px; }
+}

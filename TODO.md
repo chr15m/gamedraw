@@ -2,17 +2,22 @@
 
 ## TODO
 
-- [x] Change UI words into tabler.io icons
-- [x] Put the palette interface behind an icon toggle
-- [x] Put a hamburger menu in the top left
-- [x] Instead of a literal date, the page name should be a string
-- [x] List of all pages in the hamburger menu under 'pages'
+- [x] Put the 'pin UI' toggle to the right of the palette toggle.
+- [ ] Implement a drag-rectangle-to-select UI for the pointer.
+- [ ] Collapse the zoom UI into a single magnifying glass icon that pops out.
+- [ ] When selecting a shape, do not select if a transparent portion is tapped/clicked.
+- [ ] Fill and close should be tied together to prevent impossible states like fill with no close. E.g. Un-closing a filled shape should not show 'fill' as selected, or show it as greyed out selected.
+- [ ] Don't show the "edit name" field under hamburger.
+- [ ] Put an edit button next to each page name which turns it into an editable input.
+- [ ] Threshold pinch to zoom so two finger dragging doesn't trigger it so easily.
+- [ ] Remember last selected board in pin ui.
+- [ ] Drag to move selected shape around.
+- [ ] Bug: after selecting a shape, tapping any resize corner instantly collapses the rectangle to zero w/h at the point of the corner where you tapped.
+- [ ] Now that the two export buttons are in the hamburger menu, remove them from the UI buttons.
 
 ## Next
 
 - [ ] sync to nostr
-
-- [ ] Bug: a single dot turns into a small circle after converting
 - [ ] Display size of current page definition stringified in kb in top right
 - [ ] Implement stroke and fill order toggle
 - [ ] Support custom palette import from hex lists (Lospec format)
@@ -20,6 +25,12 @@
 
 ## Done
 
+- [x] Bug: a single dot turns into a small circle after converting
+- [x] Change UI words into tabler.io icons
+- [x] Put the palette interface behind an icon toggle
+- [x] Put a hamburger menu in the top left
+- [x] Instead of a literal date, the page name should be a string
+- [x] List of all pages in the hamburger menu under 'pages'
 - [x] Browse and import reference images from a Pinterest board
 - [x] Ability to select palettes with CC-29 lospec as an option
 - [x] Pages should be dates and default to 'today' when loaded

@@ -265,21 +265,42 @@
 
 (defn toggle-fill! []
   (let [sel (:selection @app)
-        nf (if (= (:fill @app) "solid") "none" "solid")]
+        ss (:shapes @app)
+        currently-filled? (if (seq sel)
+                            (some #(and (sel (:id %)) (:is-closed %) (not= (:fill %) "none") (some? (:fill %))) ss)
+                            (= (:fill @app) "solid"))
+        nf (if currently-filled? "none" "solid")]
     (history-push!)
     (swap! app (fn [a]
                  (-> a (assoc :fill nf)
-                     (update :shapes (fn [ss]
-                                       (mapv #(if (sel (:id %))
-                                                (assoc % :fill (if (= nf "solid") (:stroke %) "none"))
-                                                %) ss))))))))
+                     (update :shapes (fn [shapes]
+                                       (mapv (fn [s]
+                                               (if (sel (:id s))
+                                                 (if (= nf "solid")
+                                                   (assoc s :is-closed true :fill (:stroke s))
+                                                   (assoc s :fill "none"))
+                                                 s))
+                                             shapes))))))))
 
 (defn toggle-closed! []
   (let [sel (:selection @app)]
     (when (seq sel)
       (history-push!)
-      (swap! app update :shapes
-             (fn [ss] (mapv #(if (sel (:id %)) (update % :is-closed not) %) ss))))))
+      (swap! app (fn [a]
+                   (let [ss (:shapes a)
+                         currently-closed? (some #(and (sel (:id %)) (:is-closed %)) ss)
+                         new-closed? (not currently-closed?)
+                         new-shapes (mapv (fn [s]
+                                            (if (sel (:id s))
+                                              (assoc s :is-closed new-closed?
+                                                       :fill (if new-closed? (:fill s "none") "none"))
+                                              s))
+                                          ss)
+                         new-fill (if (and new-closed? (some #(and (sel (:id %)) (not= (:fill %) "none")) new-shapes))
+                                    "solid" "none")]
+                     (-> a
+                         (assoc :shapes new-shapes)
+                         (assoc :fill new-fill))))))))
 
 (defn simplify-shape [s]
   (if (> (count (:points s)) 2)
@@ -987,14 +1008,27 @@
      [:div.swatches
       (for [c (:colors pal)] ^{:key c} [swatch c])]
      [:div.style-row
-      [:button.mini-btn {:class (when (= (:fill st) "solid") "active")
-                         :title "Toggle fill of selection"
-                         :onClick toggle-fill!}
-       [:i.ti.ti-paint]
-       [:span {:style {:display "none"}} "fill"]]
-      [:button.mini-btn {:title "Toggle open/closed selection" :onClick toggle-closed!}
-       [:i.ti.ti-polygon]
-       [:span {:style {:display "none"}} "close"]]
+      (let [sel (:selection st)
+            selected-shapes (filter #(contains? sel (:id %)) (:shapes st))
+            has-sel? (seq selected-shapes)
+            is-closed? (if has-sel?
+                         (boolean (some :is-closed selected-shapes))
+                         false)
+            is-filled? (if has-sel?
+                         (boolean (and is-closed?
+                                       (some #(and (:is-closed %) (not= (:fill %) "none") (some? (:fill %))) selected-shapes)))
+                         (= (:fill st) "solid"))]
+        [:<>
+         [:button.mini-btn {:class (str (when is-filled? "active ") (when (and has-sel? (not is-closed?)) "disabled"))
+                            :title (if (and has-sel? (not is-closed?)) "Close shape to fill" "Toggle fill of selection")
+                            :onClick toggle-fill!}
+          [:i.ti.ti-paint]
+          [:span {:style {:display "none"}} "fill"]]
+         [:button.mini-btn {:class (when is-closed? "active")
+                            :title "Toggle open/closed selection"
+                            :onClick toggle-closed!}
+          [:i.ti.ti-polygon]
+          [:span {:style {:display "none"}} "close"]]])
       [:button.mini-btn {:title "Simplify selection (Ctrl-L)" :onClick simplify-selection!}
        [:i.ti.ti-wand]
        [:span {:style {:display "none"}} "simplify"]]]

@@ -319,6 +319,7 @@ html, body, #app {
 }
 .mini-btn .ti { font-size: 15px; }
 .mini-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.mini-btn.disabled { opacity: 0.45; }
 
 .sizes { display: flex; gap: 4px; margin-bottom: 8px; }
 

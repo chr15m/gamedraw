@@ -2,23 +2,13 @@
 
 ## TODO
 
-- [ ] Each selected shape should get its own dotted-line box around it.
-- [ ] When drag-rectangle selecting shapes inside other shapes it should only select shapes that are completely within the rectangle.
 - [ ] Hide the 'hand' to move on mobile.
 - [ ] Put the undo/redo/delete/duplicate icons on one line together below the page name.
+- [ ] Previously selected pin board is not being recalled.
 
-- [x] Put the 'pin UI' toggle to the right of the palette toggle.
-- [x] Implement a drag-rectangle-to-select UI for the pointer.
-- [x] Collapse the zoom UI into a single magnifying glass icon that pops out.
-- [x] When selecting a shape, do not select if a transparent portion is tapped/clicked.
-- [x] Fill and close should be tied together to prevent impossible states like fill with no close. E.g. Un-closing a filled shape should not show 'fill' as selected, or show it as greyed out selected.
-- [x] Don't show the "edit name" field under hamburger.
-- [x] Put an edit button next to each page name which turns it into an editable input.
+- [x] Each selected shape should get its own dotted-line box around it.
+- [ ] When drag-rectangle selecting shapes inside other shapes it should only select shapes that are completely within the rectangle.
 - [ ] Threshold pinch to zoom so two finger dragging doesn't trigger it so easily.
-- [x] Remember last selected board in pin ui.
-- [x] Drag to move selected shape around.
-- [x] Bug: after selecting a shape, tapping any resize corner instantly collapses the rectangle to zero w/h at the point of the corner where you tapped.
-- [x] Now that the two export buttons are in the hamburger menu, remove them from the UI buttons.
 
 ## Next
 
@@ -30,6 +20,17 @@
 
 ## Done
 
+- [x] Put the 'pin UI' toggle to the right of the palette toggle.
+- [x] Implement a drag-rectangle-to-select UI for the pointer.
+- [x] Collapse the zoom UI into a single magnifying glass icon that pops out.
+- [x] When selecting a shape, do not select if a transparent portion is tapped/clicked.
+- [x] Fill and close should be tied together to prevent impossible states like fill with no close. E.g. Un-closing a filled shape should not show 'fill' as selected, or show it as greyed out selected.
+- [x] Don't show the "edit name" field under hamburger.
+- [x] Put an edit button next to each page name which turns it into an editable input.
+- [x] Remember last selected board in pin ui.
+- [x] Drag to move selected shape around.
+- [x] Bug: after selecting a shape, tapping any resize corner instantly collapses the rectangle to zero w/h at the point of the corner where you tapped.
+- [x] Now that the two export buttons are in the hamburger menu, remove them from the UI buttons.
 - [x] Bug: a single dot turns into a small circle after converting
 - [x] Change UI words into tabler.io icons
 - [x] Put the palette interface behind an icon toggle

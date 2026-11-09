@@ -842,8 +842,10 @@
 
 (defn selection-overlay []
   (let [st @app
-        b (selection-bbox (:shapes st) (:selection st))]
-    (when b
+        sel (:selection st)
+        sel-shapes (filterv #(contains? sel (:id %)) (:shapes st))
+        b (selection-bbox (:shapes st) sel)]
+    (when (and b (seq sel-shapes))
       (let [s1 (world->screen st {:x (:x1 b) :y (:y1 b)})
             s2 (world->screen st {:x (:x2 b) :y (:y2 b)})
             x1 (:x s1) y1 (:y s1) x2 (:x s2) y2 (:y s2)
@@ -854,10 +856,27 @@
                      [(:x1 b) (:y2 b) (:x2 b) (:y1 b)]]
             center {:x (/ (+ (:x1 b) (:x2 b)) 2) :y (/ (+ (:y1 b) (:y2 b)) 2)}]
         [:g.overlay
+         ;; Dotted-line box around each selected shape
+         (for [s sel-shapes
+               :let [sb (shape-bbox s)
+                     p1 (world->screen st {:x (:x1 sb) :y (:y1 sb)})
+                     p2 (world->screen st {:x (:x2 sb) :y (:y2 sb)})
+                     bx (:x p1) by (:y p1)
+                     bw (max 0 (- (:x p2) (:x p1)))
+                     bh (max 0 (- (:y p2) (:y p1)))]]
+           ^{:key (:id s)}
+           [:rect.shape-selection-box
+            {:x bx :y by :width bw :height bh
+             :fill "none" :stroke "#4465e9" :strokeWidth 1.5
+             :strokeDasharray "4 3" :pointerEvents "none"}])
+         ;; Group bounding box for moving selection
          [:rect.selection-box
           {:x x1 :y y1 :width (max 0 (- x2 x1)) :height (max 0 (- y2 y1))
-           :fill "rgba(68,101,233,0.01)" :stroke "#4465e9" :strokeWidth 1.5
-           :strokeDasharray "4 3"
+           :fill "rgba(68,101,233,0.01)"
+           :stroke (if (> (count sel-shapes) 1) "#4465e9" "none")
+           :strokeWidth 1
+           :strokeDasharray "2 2"
+           :strokeOpacity 0.45
            :style {:cursor "move"}
            :onPointerDown (fn [e]
                             (.stopPropagation e)

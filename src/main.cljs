@@ -1043,9 +1043,7 @@
      [:button.icon-btn {:title "Undo (Ctrl-Z)" :onClick undo!} [:i.ti.ti-arrow-back-up]]
      [:button.icon-btn {:title "Redo (Ctrl-Y)" :onClick redo!} [:i.ti.ti-arrow-forward-up]]
      [:button.icon-btn {:title "Delete (Del)" :onClick delete-selection!} [:i.ti.ti-trash]]
-     [:button.icon-btn {:title "Duplicate (Ctrl-D)" :onClick duplicate!} [:i.ti.ti-copy]]
-     [:button.icon-btn {:title "Export SVG" :onClick #(export-svg! false)} [:i.ti.ti-download]]
-     [:button.icon-btn {:title "Export selection" :onClick #(export-svg! true)} [:i.ti.ti-file-export]]]))
+     [:button.icon-btn {:title "Duplicate (Ctrl-D)" :onClick duplicate!} [:i.ti.ti-copy]]]))
 
 (defn swatch [hex]
   (let [p (:palette @app)
@@ -1160,9 +1158,9 @@
     [:div.hamburger-menu
      [:button.menu-item {:onClick (fn [] (close!) (clear-page!))}
       [:i.ti.ti-eraser] "Clear canvas"]
-     [:button.menu-item {:onClick (fn [] (close!) (export-svg! false))}
+     [:button.menu-item {:title "Export SVG" :onClick (fn [] (close!) (export-svg! false))}
       [:i.ti.ti-download] "Export SVG"]
-     [:button.menu-item {:onClick (fn [] (close!) (export-svg! true))}
+     [:button.menu-item {:title "Export selection" :onClick (fn [] (close!) (export-svg! true))}
       [:i.ti.ti-file-export] "Export selection"]
      [:div.menu-divider]
      [:div.menu-section-header

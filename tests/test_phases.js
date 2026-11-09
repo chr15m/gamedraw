@@ -204,9 +204,11 @@ const shapeCount = (page) => page.evaluate(() =>
   await fresh(page);
   await drawTool(page);
   await drawStroke(page, [[300, 300], [600, 500]]);
+  await page.click('.menu-btn');
+  await page.waitForSelector('.hamburger-menu');
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.click('button[title="Export SVG"]'),
+    page.click('.hamburger-menu button:has-text("Export SVG")'),
   ]);
   const file = await download.path();
   const content = fs.readFileSync(file, 'utf8');

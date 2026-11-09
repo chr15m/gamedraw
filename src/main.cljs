@@ -1137,10 +1137,10 @@
         zoom-open? (:zoom-open st)
         zoom-pct (str (js/Math.round (* 100 (get-in st [:viewport :zoom]))) "%")]
     [:div.toolbar
-     [tool-button :select "ti-pointer" "Select"]
-     [tool-button :pan "ti-hand-stop" "Pan" "tool-pan-btn"]
      [tool-button :draw "ti-pencil" "Draw"]
      [tool-button :eraser "ti-eraser" "Eraser"]
+     [tool-button :select "ti-pointer" "Select"]
+     [tool-button :pan "ti-hand-stop" "Pan" "tool-pan-btn"]
      [:div.zoom-control-wrap
       (when zoom-open?
         [:div.zoom-backdrop {:onClick #(swap! app assoc :zoom-open false)}])

@@ -959,8 +959,8 @@
      (when (seq selection) [selection-overlay])
      (when edit-id [vertex-overlay])]))
 
-(defn tool-button [tool icon-class label]
-  [:button.tool-btn {:class (when (= (:tool @app) tool) "active")
+(defn tool-button [tool icon-class label & [extra-class]]
+  [:button.tool-btn {:class (str (when (= (:tool @app) tool) "active ") extra-class)
                      :title label
                      :onClick #(swap! app assoc :tool tool :drawing [] :eraser [])}
    [:i.ti {:class icon-class}]
@@ -1125,7 +1125,7 @@
         zoom-pct (str (js/Math.round (* 100 (get-in st [:viewport :zoom]))) "%")]
     [:div.toolbar
      [tool-button :select "ti-pointer" "Select"]
-     [tool-button :pan "ti-hand-stop" "Pan"]
+     [tool-button :pan "ti-hand-stop" "Pan" "tool-pan-btn"]
      [tool-button :draw "ti-pencil" "Draw"]
      [tool-button :eraser "ti-eraser" "Eraser"]
      [:div.zoom-control-wrap

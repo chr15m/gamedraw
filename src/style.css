@@ -510,7 +510,12 @@ html, body, #app {
   color: var(--text);
 }
 
+@media (max-width: 640px), (pointer: coarse) {
+  .tool-pan-btn { display: none !important; }
+}
+
 @media (max-width: 560px) {
+  .tool-pan-btn { display: none !important; }
   .style-panel { width: 168px; padding: 8px; }
   .swatch { width: 24px; height: 24px; }
   .tool-btn { min-width: 42px; padding: 0 6px; font-size: 11px; }

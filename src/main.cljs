@@ -123,11 +123,37 @@
   (let [d1 (ccw a b c) d2 (ccw a b d) d3 (ccw c d a) d4 (ccw c d b)]
     (and (not= (pos? d1) (pos? d2)) (not= (pos? d3) (pos? d4)))))
 
+(defn pt-in-polygon? [p pts]
+  (let [n (count pts)
+        px (:x p) py (:y p)]
+    (if (< n 3)
+      false
+      (loop [i 0
+             j (dec n)
+             inside false]
+        (if (< i n)
+          (let [pi (nth pts i)
+                pj (nth pts j)
+                xi (:x pi) yi (:y pi)
+                xj (:x pj) yj (:y pj)
+                intersect? (and (not= (> yi py) (> yj py))
+                                (< px (+ (/ (* (- xj xi) (- py yi)) (- yj yi)) xi)))]
+            (recur (inc i) i (if intersect? (not inside) inside)))
+          inside)))))
+
 (defn hit-shape? [s p tol]
-  (let [pts (:points s)]
-    (if (= 1 (count pts))
-      (< (js/Math.hypot (- (:x p) (:x (first pts))) (- (:y p) (:y (first pts)))) tol)
-      (some (fn [[a b]] (< (pt-seg-dist p a b) tol)) (shape-segments s)))))
+  (let [pts (:points s)
+        half-w (/ (or (:stroke-width s) 3.5) 2)
+        eff-tol (+ half-w tol)
+        stroke-hit? (if (= 1 (count pts))
+                      (< (js/Math.hypot (- (:x p) (:x (first pts))) (- (:y p) (:y (first pts)))) eff-tol)
+                      (some (fn [[a b]] (< (pt-seg-dist p a b) eff-tol)) (shape-segments s)))
+        is-filled? (and (:is-closed s)
+                        (some? (:fill s))
+                        (not= (:fill s) "none")
+                        (not= (:fill s) "transparent"))]
+    (or stroke-hit?
+        (and is-filled? (pt-in-polygon? p pts)))))
 
 (defn translate-pts [s dx dy]
   (update s :points #(mapv (fn [p] (-> p (update :x + dx) (update :y + dy))) %)))
@@ -357,7 +383,7 @@
 (defn select-down [ne x y]
   (let [st @app
         w (client->world st x y)
-        tol (/ 9 (:zoom (:viewport st)))
+        tol (/ 4.5 (:zoom (:viewport st)))
         hit (->> (:shapes st) (filter #(hit-shape? % w tol)) last)
         eid (:edit-id st)]
     (cond
@@ -393,18 +419,21 @@
     (cond
       (= (:kind drag) :marquee)
       (let [[sx sy] (:start drag)
-            w1 (client->world st (min sx x) (min sy y))
-            w2 (client->world st (max sx x) (max sy y))
-            ids (set (for [s (:shapes st)
-                           :when (let [b (shape-bbox s)]
-                                   (and (<= (:x1 b) (:x w2)) (>= (:x2 b) (:x w1))
-                                        (<= (:y1 b) (:y w2)) (>= (:y2 b) (:y w1))))]
-                       (:id s)))
-            sel (into (or (:init-sel drag) #{}) ids)]
-        (swap! app (fn [a]
-                     (-> a
-                         (assoc-in [:drag :cur] [x y])
-                         (assoc :selection sel)))))
+            dist (js/Math.hypot (- x sx) (- y sy))]
+        (if (> dist 4)
+          (let [w1 (client->world st (min sx x) (min sy y))
+                w2 (client->world st (max sx x) (max sy y))
+                ids (set (for [s (:shapes st)
+                               :when (let [b (shape-bbox s)]
+                                       (and (<= (:x1 b) (:x w2)) (>= (:x2 b) (:x w1))
+                                            (<= (:y1 b) (:y w2)) (>= (:y2 b) (:y w1))))]
+                           (:id s)))
+                sel (into (or (:init-sel drag) #{}) ids)]
+            (swap! app (fn [a]
+                         (-> a
+                             (assoc-in [:drag :cur] [x y])
+                             (assoc :selection sel)))))
+          (swap! app assoc-in [:drag :cur] [x y])))
 
       (= (:kind drag) :move)
       (let [dx (- (:x w) (:x (:last drag)))
@@ -434,14 +463,17 @@
   (let [st @app drag (:drag st)]
     (when (= (:kind drag) :marquee)
       (let [[sx sy] (:start drag) [cx cy] (:cur drag)
-            w1 (client->world st (min sx cx) (min sy cy))
-            w2 (client->world st (max sx cx) (max sy cy))
-            ids (set (for [s (:shapes st)
-                           :when (let [b (shape-bbox s)]
-                                   (and (<= (:x1 b) (:x w2)) (>= (:x2 b) (:x w1))
-                                        (<= (:y1 b) (:y w2)) (>= (:y2 b) (:y w1))))]
-                       (:id s)))]
-        (swap! app assoc :selection (into (or (:init-sel drag) #{}) ids))))
+            dist (js/Math.hypot (- cx sx) (- cy sy))]
+        (if (> dist 4)
+          (let [w1 (client->world st (min sx cx) (min sy cy))
+                w2 (client->world st (max sx cx) (max sy cy))
+                ids (set (for [s (:shapes st)
+                               :when (let [b (shape-bbox s)]
+                                       (and (<= (:x1 b) (:x w2)) (>= (:x2 b) (:x w1))
+                                            (<= (:y1 b) (:y w2)) (>= (:y2 b) (:y w1))))]
+                           (:id s)))]
+            (swap! app assoc :selection (into (or (:init-sel drag) #{}) ids)))
+          (swap! app assoc :selection (or (:init-sel drag) #{})))))
     (swap! app assoc :drag nil :marquee nil)))
 
 (defn start-tool [ne tool x y pid]
@@ -852,7 +884,9 @@
         [:polyline {:points (str/join " " (map (fn [p] (str (:x p) "," (:y p))) eraser))
                     :fill "none" :stroke "rgba(220,38,38,0.55)"
                     :strokeWidth (/ 8 zoom) :strokeLinecap "round" :pointerEvents "none"}])]
-     (when (= (:kind drag) :marquee)
+     (when (and (= (:kind drag) :marquee)
+                (> (js/Math.hypot (- (first (:cur drag)) (first (:start drag)))
+                                  (- (second (:cur drag)) (second (:start drag)))) 4))
        (let [[sx sy] (:start drag) [cx cy] (:cur drag)]
          [:rect.marquee-rect
           {:x (min sx cx) :y (min sy cy)

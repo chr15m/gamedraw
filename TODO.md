@@ -9,7 +9,7 @@
 - [x] Fill and close should be tied together to prevent impossible states like fill with no close. E.g. Un-closing a filled shape should not show 'fill' as selected, or show it as greyed out selected.
 - [x] Don't show the "edit name" field under hamburger.
 - [x] Put an edit button next to each page name which turns it into an editable input.
-- [ ] Threshold pinch to zoom so two finger dragging doesn't trigger it so easily.
+- [x] Threshold pinch to zoom so two finger dragging doesn't trigger it so easily.
 - [ ] Remember last selected board in pin ui.
 - [ ] Drag to move selected shape around.
 - [ ] Bug: after selecting a shape, tapping any resize corner instantly collapses the rectangle to zero w/h at the point of the corner where you tapped.

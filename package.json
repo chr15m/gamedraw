@@ -1,0 +1,26 @@
+{
+  "name": "gamedraw",
+  "version": "1.0.0",
+  "description": "A small, single-file-ish vector drawing web app. The canvas engine is a custom **native SVG** renderer written in **ClojureScript** and run in the browser with [Scittle](https://github.com/babashka/scittle) + [Reagent](https://reagent-project.github.io/). There is no build step: `src/main.cljs` is evaluated directly by Scittle.",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chr15m/gamedraw.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/chr15m/gamedraw/issues"
+  },
+  "homepage": "https://github.com/chr15m/gamedraw#readme",
+  "devDependencies": {
+    "playwright": "^1.65.0"
+  }
+}

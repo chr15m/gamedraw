@@ -74,7 +74,11 @@ html, body, #app {
   font-size: 15px;
   line-height: 1;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
+.icon-btn .ti { font-size: 18px; }
 .icon-btn:hover { background: #f0eee6; }
 
 /* Style panel ------------------------------------------------------------- */
@@ -160,7 +164,11 @@ html, body, #app {
   cursor: pointer;
   white-space: nowrap;
   padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
+.mini-btn .ti { font-size: 15px; }
 .mini-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
 
 .sizes { display: flex; gap: 4px; margin-bottom: 8px; }
@@ -171,6 +179,7 @@ html, body, #app {
   position: relative;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   height: 26px;
   padding: 0 9px;
   border: 1px solid var(--panel-border);
@@ -179,6 +188,7 @@ html, body, #app {
   font-size: 11px;
   cursor: pointer;
 }
+.trace-label .ti { font-size: 15px; }
 .trace-opacity { flex: 1; min-width: 0; }
 
 /* Toolbar ----------------------------------------------------------------- */
@@ -200,8 +210,8 @@ html, body, #app {
 
 .tool-btn {
   height: 36px;
-  min-width: 52px;
-  padding: 0 10px;
+  min-width: 42px;
+  padding: 0 8px;
   border: none;
   border-radius: 8px;
   background: transparent;
@@ -209,8 +219,11 @@ html, body, #app {
   font-weight: 600;
   color: var(--text);
   cursor: pointer;
-  text-transform: capitalize;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
+.tool-btn .ti { font-size: 19px; }
 .tool-btn:hover { background: #f0eee6; }
 .tool-btn.active { background: var(--primary); color: #fff; }
 

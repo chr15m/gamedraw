@@ -1,6 +1,8 @@
 // Phase 2-5 verification tests.
 // Run: node tests/test_phases.js
-const { chromium } = require('/root/pwtest/node_modules/playwright');
+let playwright;
+try { playwright = require('playwright'); } catch (e) { playwright = require('/root/pwtest/node_modules/playwright'); }
+const { chromium } = playwright;
 const assert = require('assert');
 const fs = require('fs');
 
@@ -46,7 +48,10 @@ const shapeCount = (page) => page.evaluate(() =>
   document.querySelectorAll('.canvas-svg g.world > path, .canvas-svg g.world > circle').length);
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({
+    executablePath: process.env.CHROMIUM_PATH || (fs.existsSync('/usr/bin/chromium-browser') ? '/usr/bin/chromium-browser' : undefined),
+    args: ['--no-sandbox']
+  });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   page.on('pageerror', (e) => console.log('[pageerror]', e.message));
   const pass = (n) => console.log('PASS', n);

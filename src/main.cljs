@@ -823,23 +823,24 @@
      (when (seq selection) [selection-overlay])
      (when edit-id [vertex-overlay])]))
 
-(defn tool-button [tool label]
+(defn tool-button [tool icon-class label]
   [:button.tool-btn {:class (when (= (:tool @app) tool) "active")
                      :title label
                      :onClick #(swap! app assoc :tool tool :drawing [] :eraser [])}
-   label])
+   [:i.ti {:class icon-class}]
+   [:span {:style {:display "none"}} label]])
 
 (defn top-bar []
   (let [st @app]
     [:div.top-bar
      [:input.page-input {:type "date" :value (:page st)
                          :onChange (fn [e] (load-page! (.. e -target -value)))}]
-     [:button.icon-btn {:title "Undo (Ctrl-Z)" :onClick undo!} "↶"]
-     [:button.icon-btn {:title "Redo (Ctrl-Y)" :onClick redo!} "↷"]
-     [:button.icon-btn {:title "Delete (Del)" :onClick delete-selection!} "⌫"]
-     [:button.icon-btn {:title "Duplicate (Ctrl-D)" :onClick duplicate!} "⧉"]
-     [:button.icon-btn {:title "Export SVG" :onClick #(export-svg! false)} "⬇"]
-     [:button.icon-btn {:title "Export selection" :onClick #(export-svg! true)} "⤓"]]))
+     [:button.icon-btn {:title "Undo (Ctrl-Z)" :onClick undo!} [:i.ti.ti-arrow-back-up]]
+     [:button.icon-btn {:title "Redo (Ctrl-Y)" :onClick redo!} [:i.ti.ti-arrow-forward-up]]
+     [:button.icon-btn {:title "Delete (Del)" :onClick delete-selection!} [:i.ti.ti-trash]]
+     [:button.icon-btn {:title "Duplicate (Ctrl-D)" :onClick duplicate!} [:i.ti.ti-copy]]
+     [:button.icon-btn {:title "Export SVG" :onClick #(export-svg! false)} [:i.ti.ti-download]]
+     [:button.icon-btn {:title "Export selection" :onClick #(export-svg! true)} [:i.ti.ti-file-export]]]))
 
 (defn swatch [hex]
   (let [p (:palette @app)
@@ -862,22 +863,29 @@
       [:button.bg-btn {:class (when (:bg-mode p) "active")
                        :title "Select canvas background color"
                        :onClick #(swap! app update-in [:palette :bg-mode] not)}
-       [:span.bg-chip {:style {:background (:bg p)}}] "BG"]]
+       [:span.bg-chip {:style {:background (:bg p)}}]
+       [:i.ti.ti-artboard]]]
      [:div.swatches
       (for [c (:colors pal)] ^{:key c} [swatch c])]
      [:div.style-row
       [:button.mini-btn {:class (when (= (:fill st) "solid") "active")
                          :title "Toggle fill of selection"
-                         :onClick toggle-fill!} "fill"]
-      [:button.mini-btn {:title "Toggle open/closed selection" :onClick toggle-closed!} "close"]
-      [:button.mini-btn {:title "Simplify selection (Ctrl-L)" :onClick simplify-selection!} "simplify"]]
+                         :onClick toggle-fill!}
+       [:i.ti.ti-paint]
+       [:span {:style {:display "none"}} "fill"]]
+      [:button.mini-btn {:title "Toggle open/closed selection" :onClick toggle-closed!}
+       [:i.ti.ti-polygon]
+       [:span {:style {:display "none"}} "close"]]
+      [:button.mini-btn {:title "Simplify selection (Ctrl-L)" :onClick simplify-selection!}
+       [:i.ti.ti-wand]
+       [:span {:style {:display "none"}} "simplify"]]]
      [:div.sizes
       (for [[k _] size-order] ^{:key k}
         [:button.mini-btn {:class (when (= k (:size st)) "active")
                            :onClick #(set-size! k)} (str/upper-case k)])]
      [:div.trace-row
-      [:label.trace-label
-       "Trace"
+      [:label.trace-label {:title "Load trace image"}
+       [:i.ti.ti-photo]
        [:input {:type "file" :accept "image/*" :style {:display "none"}
                 :onChange load-trace-file!}]]
       (when trace
@@ -885,18 +893,22 @@
                                :value (:opacity trace 0.5)
                                :onChange #(swap! app assoc-in [:trace :opacity] (js/parseFloat (.. % -target -value)))}])
       (when trace
-        [:button.mini-btn {:title "Remove trace image" :onClick #(swap! app assoc :trace nil)} "✕"])]]))
+        [:button.mini-btn {:title "Remove trace image" :onClick #(swap! app assoc :trace nil)}
+         [:i.ti.ti-x]])]]))
 
 (defn toolbar []
   [:div.toolbar
-   [tool-button :select "select"]
-   [tool-button :pan "pan"]
-   [tool-button :draw "draw"]
-   [tool-button :eraser "erase"]
+   [tool-button :select "ti-pointer" "Select"]
+   [tool-button :pan "ti-hand-stop" "Pan"]
+   [tool-button :draw "ti-pencil" "Draw"]
+   [tool-button :eraser "ti-eraser" "Eraser"]
    [:span.zoom-label (str (js/Math.round (* 100 (get-in @app [:viewport :zoom]))) "%")]
-   [:button.icon-btn {:title "Zoom out" :onClick #(zoom-by (/ 1 1.25) (/ (.-innerWidth js/window) 2) (/ (.-innerHeight js/window) 2))} "−"]
-   [:button.icon-btn {:title "Zoom in" :onClick #(zoom-by 1.25 (/ (.-innerWidth js/window) 2) (/ (.-innerHeight js/window) 2))} "+"]
-   [:button.icon-btn {:title "Reset zoom (100%)" :onClick reset-zoom} "1:1"]])
+   [:button.icon-btn {:title "Zoom out" :onClick #(zoom-by (/ 1 1.25) (/ (.-innerWidth js/window) 2) (/ (.-innerHeight js/window) 2))}
+    [:i.ti.ti-zoom-out]]
+   [:button.icon-btn {:title "Zoom in" :onClick #(zoom-by 1.25 (/ (.-innerWidth js/window) 2) (/ (.-innerHeight js/window) 2))}
+    [:i.ti.ti-zoom-in]]
+   [:button.icon-btn {:title "Reset zoom (100%)" :onClick reset-zoom}
+    [:i.ti.ti-zoom-reset]]])
 
 (defn root []
   [:div.app-root

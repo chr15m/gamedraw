@@ -2,6 +2,14 @@
 
 ## TODO
 
+- [x] Change UI words into tabler.io icons
+- [ ] Put the palette interface behind an icon toggle
+- [ ] Put a hamburger menu in the top left
+- [ ] Instead of a literal date, the page name should be a string
+- [ ] List of all pages in the hamburger menu under 'pages'
+
+## Next
+
 - [ ] sync to nostr
 
 - [ ] Bug: a single dot turns into a small circle after converting

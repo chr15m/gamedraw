@@ -163,7 +163,7 @@
   (let [cos (js/Math.cos ang) sin (js/Math.sin ang)
         dx (- (:x p) (:x c)) dy (- (:y p) (:y c))]
     {:x (+ (:x c) (- (* dx cos) (* dy sin)))
-     :y (+ (:y c) (+ (* dx sin) (* dy cos)))}))
+     :y (+ (:y c) (* dx sin) (* dy cos))}))
 
 (defn world->screen [st p]
   (let [{:keys [x y zoom]} (:viewport st)]
@@ -398,7 +398,7 @@
   (let [pts (vec (:points s))
         segs (vec (map vector (range (dec (count pts))) (map vector pts (rest pts))))
         nearest (apply min-key
-                       (fn [[i [a b]]] (pt-seg-dist w a b))
+                       (fn [[_ [a b]]] (pt-seg-dist w a b))
                        segs)]
     (if nearest
       (let [[i _] nearest]
@@ -417,9 +417,10 @@
       (and eid hit (= eid (:id hit)))
       (do (.setPointerCapture @canvas-el (.-pointerId ne))
           (history-push!)
-          (swap! app (fn [a] (update :shapes (fn [ss]
-                                               (mapv #(if (= (:id %) eid) (insert-vertex % w) %) ss))))
-                 assoc :selection #{eid} :drag nil))
+          (swap! app (fn [a]
+                       (-> a
+                           (update :shapes (fn [ss] (mapv #(if (= (:id %) eid) (insert-vertex % w) %) ss)))
+                           (assoc :selection #{eid} :drag nil)))))
 
       (and (seq sel) bbox
            (not (.-shiftKey ne))
@@ -672,7 +673,6 @@
 
 (defn reset-zoom []
   (let [st @app
-        {:keys [zoom]} (:viewport st)
         cx (/ (.-innerWidth js/window) 2)
         cy (/ (.-innerHeight js/window) 2)
         w (client->world st cx cy)]

@@ -44,6 +44,7 @@
     :viewport {:x 0.0 :y 0.0 :zoom 1.0}
     :palette {:palette-id "cc-29" :color "#212123" :bg "#f2f0e5" :bg-mode false}
     :palette-open false
+    :menu-open false
     :size "m"
     :fill "none"
     :drawing []
@@ -834,6 +835,11 @@
 (defn top-bar []
   (let [st @app]
     [:div.top-bar
+     [:button.icon-btn.menu-btn
+      {:title "Menu"
+       :class (when (:menu-open st) "active")
+       :onClick #(swap! app update :menu-open not)}
+      [:i.ti.ti-menu-2]]
      [:input.page-input {:type "date" :value (:page st)
                          :onChange (fn [e] (load-page! (.. e -target -value)))}]
      [:button.icon-btn {:title "Undo (Ctrl-Z)" :onClick undo!} [:i.ti.ti-arrow-back-up]]
@@ -922,10 +928,24 @@
      [:i.ti.ti-palette]
      [:span.palette-chip {:style {:background col}}]]))
 
+(defn hamburger-menu []
+  (let [close! #(swap! app assoc :menu-open false)]
+    [:div.hamburger-menu
+     [:button.menu-item {:onClick (fn [] (close!) (clear-page!))}
+      [:i.ti.ti-trash] "Clear page"]
+     [:button.menu-item {:onClick (fn [] (close!) (export-svg! false))}
+      [:i.ti.ti-download] "Export SVG"]
+     [:button.menu-item {:onClick (fn [] (close!) (export-svg! true))}
+      [:i.ti.ti-file-export] "Export selection"]]))
+
 (defn root []
   [:div.app-root
    [canvas]
    [top-bar]
+   (when (:menu-open @app)
+     [:div.menu-backdrop {:onClick #(swap! app assoc :menu-open false)}])
+   (when (:menu-open @app)
+     [hamburger-menu])
    [palette-toggle]
    (when (:palette-open @app)
      [style-panel])

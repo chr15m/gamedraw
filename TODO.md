@@ -12,7 +12,7 @@
 - [x] Threshold pinch to zoom so two finger dragging doesn't trigger it so easily.
 - [x] Remember last selected board in pin ui.
 - [x] Drag to move selected shape around.
-- [ ] Bug: after selecting a shape, tapping any resize corner instantly collapses the rectangle to zero w/h at the point of the corner where you tapped.
+- [x] Bug: after selecting a shape, tapping any resize corner instantly collapses the rectangle to zero w/h at the point of the corner where you tapped.
 - [ ] Now that the two export buttons are in the hamburger menu, remove them from the UI buttons.
 
 ## Next

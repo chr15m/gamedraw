@@ -343,14 +343,17 @@
 
 (declare start-pinch apply-pinch add-draw-points)
 
-(defn begin-scale [e origin other]
+(defn begin-scale [e handle anchor]
   (.stopPropagation e)
   (let [st @app
-        orig (into {} (for [s (:shapes st) :when (contains? (:selection st) (:id s))] [(:id s) (:points s)]))]
+        orig (into {} (for [s (:shapes st) :when (contains? (:selection st) (:id s))] [(:id s) (:points s)]))
+        den-x (- (:x handle) (:x anchor))
+        den-y (- (:y handle) (:y anchor))]
     (.setPointerCapture @canvas-el (.-pointerId e))
     (history-push!)
-    (swap! app assoc :drag {:kind :scale :origin origin
-                            :den {:x (- (:x other) (:x origin)) :y (- (:y other) (:y origin))}
+    (swap! app assoc :drag {:kind :scale :anchor anchor
+                            :den {:x (if (zero? den-x) 1.0 den-x)
+                                  :y (if (zero? den-y) 1.0 den-y)}
                             :orig orig})))
 
 (defn begin-rotate [e center]
@@ -365,17 +368,17 @@
                             :orig orig})))
 
 (defn apply-scale [w]
-  (let [{:keys [origin den orig]} (:drag @app)
-        sx (let [v (/ (- (:x w) (:x origin)) (if (zero? (:x den)) 1.0 (:x den)))]
+  (let [{:keys [anchor den orig]} (:drag @app)
+        sx (let [v (/ (- (:x w) (:x anchor)) (if (zero? (:x den)) 1.0 (:x den)))]
              (if (< (js/Math.abs v) 0.02) (* 0.02 (if (neg? v) -1.0 1.0)) v))
-        sy (let [v (/ (- (:y w) (:y origin)) (if (zero? (:y den)) 1.0 (:y den)))]
+        sy (let [v (/ (- (:y w) (:y anchor)) (if (zero? (:y den)) 1.0 (:y den)))]
              (if (< (js/Math.abs v) 0.02) (* 0.02 (if (neg? v) -1.0 1.0)) v))]
     (swap! app update :shapes
            (fn [ss] (mapv (fn [s]
                             (if-let [pts (get orig (:id s))]
                               (assoc s :points (mapv (fn [p]
-                                                       {:x (+ (:x origin) (* (- (:x p) (:x origin)) sx))
-                                                        :y (+ (:y origin) (* (- (:y p) (:y origin)) sy))})
+                                                       {:x (+ (:x anchor) (* (- (:x p) (:x anchor)) sx))
+                                                        :y (+ (:y anchor) (* (- (:y p) (:y anchor)) sy))})
                                                      pts))
                               s))
                           ss)))))

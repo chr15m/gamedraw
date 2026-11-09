@@ -2,16 +2,8 @@
 
 ## TODO
 
-- [x] Hide the 'hand' to move on mobile.
-- [x] Put the undo/redo/delete/duplicate icons on one line together below the page name.
-- [x] Previously selected pin board is not being recalled.
-
-- [x] Each selected shape should get its own dotted-line box around it.
-- [x] When drag-rectangle selecting shapes inside other shapes it should only select shapes that are completely within the rectangle.
-
-- [x] Move pallette toggle button to bottom right, left-align the other tools there.
-- [x] Order the tools: Draw, erase, select.
-- [x] Remove the word 'Canvas' from the pin board close button.
+- [x] Put undo and redo into the bottom toolbar just to the right of the magnifying glass.
+- [ ] Put delete/duplicate actions from top bar to bottom, to the left of undo/redo.
 
 - [ ] Threshold pinch to zoom so two finger dragging doesn't trigger it so easily.
 
@@ -24,6 +16,15 @@
 - [ ] Organize pages into projects (project-level grouping or snapshots)
 
 ## Done
+
+- [x] Hide the 'hand' to move on mobile.
+- [x] Put the undo/redo/delete/duplicate icons on one line together below the page name.
+- [x] Previously selected pin board is not being recalled.
+- [x] Each selected shape should get its own dotted-line box around it.
+- [x] When drag-rectangle selecting shapes inside other shapes it should only select shapes that are completely within the rectangle.
+- [x] Move pallette toggle button to bottom right, left-align the other tools there.
+- [x] Order the tools: Draw, erase, select.
+- [x] Remove the word 'Canvas' from the pin board close button.
 
 - [x] Put the 'pin UI' toggle to the right of the palette toggle.
 - [x] Implement a drag-rectangle-to-select UI for the pointer.

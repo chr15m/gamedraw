@@ -1049,8 +1049,6 @@
        [:i.ti.ti-menu-2]]
       [:span.page-title {:title "Current page"} (:page st)]]
      [:div.top-bar-actions
-      [:button.icon-btn {:title "Undo (Ctrl-Z)" :onClick undo!} [:i.ti.ti-arrow-back-up]]
-      [:button.icon-btn {:title "Redo (Ctrl-Y)" :onClick redo!} [:i.ti.ti-arrow-forward-up]]
       [:button.icon-btn {:title "Delete (Del)" :onClick delete-selection!} [:i.ti.ti-trash]]
       [:button.icon-btn {:title "Duplicate (Ctrl-D)" :onClick duplicate!} [:i.ti.ti-copy]]]]))
 
@@ -1159,6 +1157,8 @@
           [:i.ti.ti-zoom-in]]
          [:button.icon-btn {:title "Reset zoom (100%)" :onClick reset-zoom}
           [:i.ti.ti-zoom-reset]]])]
+     [:button.icon-btn {:title "Undo (Ctrl-Z)" :onClick undo!} [:i.ti.ti-arrow-back-up]]
+     [:button.icon-btn {:title "Redo (Ctrl-Y)" :onClick redo!} [:i.ti.ti-arrow-forward-up]]
      [:div.toolbar-divider]
      [palette-toggle]]))
 

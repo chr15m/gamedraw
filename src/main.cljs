@@ -458,8 +458,8 @@
                 w2 (client->world st (max sx x) (max sy y))
                 ids (set (for [s (:shapes st)
                                :when (let [b (shape-bbox s)]
-                                       (and (<= (:x1 b) (:x w2)) (>= (:x2 b) (:x w1))
-                                            (<= (:y1 b) (:y w2)) (>= (:y2 b) (:y w1))))]
+                                       (and (>= (:x1 b) (:x w1)) (<= (:x2 b) (:x w2))
+                                            (>= (:y1 b) (:y w1)) (<= (:y2 b) (:y w2))))]
                            (:id s)))
                 sel (into (or (:init-sel drag) #{}) ids)]
             (swap! app (fn [a]
@@ -502,8 +502,8 @@
                 w2 (client->world st (max sx cx) (max sy cy))
                 ids (set (for [s (:shapes st)
                                :when (let [b (shape-bbox s)]
-                                       (and (<= (:x1 b) (:x w2)) (>= (:x2 b) (:x w1))
-                                            (<= (:y1 b) (:y w2)) (>= (:y2 b) (:y w1))))]
+                                       (and (>= (:x1 b) (:x w1)) (<= (:x2 b) (:x w2))
+                                            (>= (:y1 b) (:y w1)) (<= (:y2 b) (:y w2))))]
                            (:id s)))]
             (swap! app assoc :selection (into (or (:init-sel drag) #{}) ids)))
           (swap! app assoc :selection (or (:init-sel drag) #{})))))

@@ -7,7 +7,7 @@
 - [ ] Previously selected pin board is not being recalled.
 
 - [x] Each selected shape should get its own dotted-line box around it.
-- [ ] When drag-rectangle selecting shapes inside other shapes it should only select shapes that are completely within the rectangle.
+- [x] When drag-rectangle selecting shapes inside other shapes it should only select shapes that are completely within the rectangle.
 - [ ] Threshold pinch to zoom so two finger dragging doesn't trigger it so easily.
 
 ## Next

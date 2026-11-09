@@ -117,7 +117,7 @@ const shapeCount = (page) => page.evaluate(() =>
   await selectTool(page);
   await page.mouse.move(200, 200);
   await page.mouse.down();
-  await page.mouse.move(1000, 650, { steps: 12 });
+  await page.mouse.move(1000, 750, { steps: 12 });
   await page.mouse.up();
   await page.waitForTimeout(150);
   const beforeDel = await shapeCount(page);

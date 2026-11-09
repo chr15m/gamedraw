@@ -47,7 +47,7 @@ html, body, #app {
   top: 10px;
   left: 10px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 4px;
   background: var(--panel);
   border: 1px solid var(--panel-border);
@@ -57,11 +57,23 @@ html, body, #app {
   z-index: 20;
 }
 
+.top-bar-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.top-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .page-title {
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
-  padding: 0 8px;
+  padding: 0 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -113,7 +125,7 @@ html, body, #app {
 
 .hamburger-menu {
   position: fixed;
-  top: 52px;
+  top: 86px;
   left: 10px;
   width: 200px;
   max-height: calc(100vh - 80px);
@@ -519,7 +531,6 @@ html, body, #app {
   .style-panel { width: 168px; padding: 8px; }
   .swatch { width: 24px; height: 24px; }
   .tool-btn { min-width: 42px; padding: 0 6px; font-size: 11px; }
-  .top-bar { max-width: calc(100vw - 190px); flex-wrap: wrap; }
 }
 /* Pinterest Integration & Viewer Styles */
 .pin-toggle-btn,

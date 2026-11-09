@@ -1041,16 +1041,18 @@
 (defn top-bar []
   (let [st @app]
     [:div.top-bar
-     [:button.icon-btn.menu-btn
-      {:title "Menu"
-       :class (when (:menu-open st) "active")
-       :onClick toggle-menu!}
-      [:i.ti.ti-menu-2]]
-     [:span.page-title {:title "Current page"} (:page st)]
-     [:button.icon-btn {:title "Undo (Ctrl-Z)" :onClick undo!} [:i.ti.ti-arrow-back-up]]
-     [:button.icon-btn {:title "Redo (Ctrl-Y)" :onClick redo!} [:i.ti.ti-arrow-forward-up]]
-     [:button.icon-btn {:title "Delete (Del)" :onClick delete-selection!} [:i.ti.ti-trash]]
-     [:button.icon-btn {:title "Duplicate (Ctrl-D)" :onClick duplicate!} [:i.ti.ti-copy]]]))
+     [:div.top-bar-header
+      [:button.icon-btn.menu-btn
+       {:title "Menu"
+        :class (when (:menu-open st) "active")
+        :onClick toggle-menu!}
+       [:i.ti.ti-menu-2]]
+      [:span.page-title {:title "Current page"} (:page st)]]
+     [:div.top-bar-actions
+      [:button.icon-btn {:title "Undo (Ctrl-Z)" :onClick undo!} [:i.ti.ti-arrow-back-up]]
+      [:button.icon-btn {:title "Redo (Ctrl-Y)" :onClick redo!} [:i.ti.ti-arrow-forward-up]]
+      [:button.icon-btn {:title "Delete (Del)" :onClick delete-selection!} [:i.ti.ti-trash]]
+      [:button.icon-btn {:title "Duplicate (Ctrl-D)" :onClick duplicate!} [:i.ti.ti-copy]]]]))
 
 (defn swatch [hex]
   (let [p (:palette @app)

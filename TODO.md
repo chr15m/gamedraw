@@ -3,7 +3,7 @@
 ## TODO
 
 - [x] Hide the 'hand' to move on mobile.
-- [ ] Put the undo/redo/delete/duplicate icons on one line together below the page name.
+- [x] Put the undo/redo/delete/duplicate icons on one line together below the page name.
 - [ ] Previously selected pin board is not being recalled.
 
 - [x] Each selected shape should get its own dotted-line box around it.

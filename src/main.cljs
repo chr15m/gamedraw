@@ -406,7 +406,9 @@
         w (client->world st x y)
         tol (/ 4.5 (:zoom (:viewport st)))
         hit (->> (:shapes st) (filter #(hit-shape? % w tol)) last)
-        eid (:edit-id st)]
+        eid (:edit-id st)
+        sel (:selection st)
+        bbox (when (seq sel) (selection-bbox (:shapes st) sel))]
     (cond
       (and eid hit (= eid (:id hit)))
       (do (.setPointerCapture @canvas-el (.-pointerId ne))
@@ -415,21 +417,28 @@
                                                (mapv #(if (= (:id %) eid) (insert-vertex % w) %) ss))))
                  assoc :selection #{eid} :drag nil))
 
+      (and (seq sel) bbox
+           (not (.-shiftKey ne))
+           (or (and (<= (:x1 bbox) (:x w) (:x2 bbox))
+                    (<= (:y1 bbox) (:y w) (:y2 bbox)))
+               (and hit (contains? sel (:id hit)))))
+      (do (.setPointerCapture @canvas-el (.-pointerId ne))
+          (swap! app assoc :edit-id nil
+                          :drag {:kind :move :last w :ids sel :pushed false}))
+
       hit
       (do (.setPointerCapture @canvas-el (.-pointerId ne))
-          (let [sel (if (.-shiftKey ne)
-                      (if (contains? (:selection st) (:id hit))
-                        (disj (:selection st) (:id hit))
-                        (conj (:selection st) (:id hit)))
-                      (if (contains? (:selection st) (:id hit))
-                        (:selection st)
-                        #{(:id hit)}))]
-            (swap! app assoc :selection sel :edit-id nil
-                            :drag {:kind :move :last w :ids sel :pushed false})))
+          (let [new-sel (if (.-shiftKey ne)
+                          (if (contains? sel (:id hit))
+                            (disj sel (:id hit))
+                            (conj sel (:id hit)))
+                          #{(:id hit)})]
+            (swap! app assoc :selection new-sel :edit-id nil
+                            :drag {:kind :move :last w :ids new-sel :pushed false})))
 
       :else
       (do (.setPointerCapture @canvas-el (.-pointerId ne))
-          (let [init-sel (if (.-shiftKey ne) (:selection st) #{})]
+          (let [init-sel (if (.-shiftKey ne) sel #{})]
             (swap! app assoc :selection init-sel :edit-id nil
                             :drag {:kind :marquee :start [x y] :cur [x y] :init-sel init-sel}))))))
 
@@ -854,9 +863,19 @@
                      [(:x1 b) (:y2 b) (:x2 b) (:y1 b)]]
             center {:x (/ (+ (:x1 b) (:x2 b)) 2) :y (/ (+ (:y1 b) (:y2 b)) 2)}]
         [:g.overlay
-         [:rect {:x x1 :y y1 :width (max 0 (- x2 x1)) :height (max 0 (- y2 y1))
-                 :fill "none" :stroke "#4465e9" :strokeWidth 1.5
-                 :strokeDasharray "4 3" :pointerEvents "none"}]
+         [:rect.selection-box
+          {:x x1 :y y1 :width (max 0 (- x2 x1)) :height (max 0 (- y2 y1))
+           :fill "rgba(68,101,233,0.01)" :stroke "#4465e9" :strokeWidth 1.5
+           :strokeDasharray "4 3"
+           :style {:cursor "move"}
+           :onPointerDown (fn [e]
+                            (.stopPropagation e)
+                            (.setPointerCapture @canvas-el (.-pointerId e))
+                            (let [st @app
+                                  w (client->world st (.-clientX e) (.-clientY e))
+                                  cur-sel (:selection st)]
+                              (swap! app assoc :edit-id nil
+                                              :drag {:kind :move :last w :ids cur-sel :pushed false})))}]
          (for [[ox oy px py] corners]
            (let [sc (world->screen st {:x ox :y oy})]
              ^{:key [ox oy]}

@@ -974,7 +974,7 @@
        :class (when (:menu-open st) "active")
        :onClick toggle-menu!}
       [:i.ti.ti-menu-2]]
-     [page-name-input]
+     [:span.page-title {:title "Current page"} (:page st)]
      [:button.icon-btn {:title "Undo (Ctrl-Z)" :onClick undo!} [:i.ti.ti-arrow-back-up]]
      [:button.icon-btn {:title "Redo (Ctrl-Y)" :onClick redo!} [:i.ti.ti-arrow-forward-up]]
      [:button.icon-btn {:title "Delete (Del)" :onClick delete-selection!} [:i.ti.ti-trash]]

@@ -237,8 +237,9 @@ const shapeCount = (page) => page.evaluate(() =>
   await page.screenshot({ path: 'tests/baseline-screenshots/new-10-trace-export.png' });
 
   // page switching
-  await page.fill('.page-input', '2020-01-02');
-  await page.dispatchEvent('.page-input', 'change');
+  await page.click('.menu-btn');
+  await page.waitForSelector('.hamburger-menu');
+  await page.click('.menu-section-action');
   await page.waitForTimeout(800);
   assert((await shapeCount(page)) === 0, 'new date page should be empty');
   pass('Phase 5 date-based pages switch');

@@ -57,6 +57,17 @@ html, body, #app {
   z-index: 20;
 }
 
+.page-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  padding: 0 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
 .page-input {
   border: 1px solid var(--panel-border);
   border-radius: 6px;

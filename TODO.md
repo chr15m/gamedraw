@@ -4,7 +4,7 @@
 
 - [x] Put the 'pin UI' toggle to the right of the palette toggle.
 - [x] Implement a drag-rectangle-to-select UI for the pointer.
-- [ ] Collapse the zoom UI into a single magnifying glass icon that pops out.
+- [x] Collapse the zoom UI into a single magnifying glass icon that pops out.
 - [ ] When selecting a shape, do not select if a transparent portion is tapped/clicked.
 - [ ] Fill and close should be tied together to prevent impossible states like fill with no close. E.g. Un-closing a filled shape should not show 'fill' as selected, or show it as greyed out selected.
 - [ ] Don't show the "edit name" field under hamburger.

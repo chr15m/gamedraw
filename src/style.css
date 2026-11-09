@@ -384,6 +384,58 @@ html, body, #app {
   font-variant-numeric: tabular-nums;
 }
 
+.zoom-control-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.zoom-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 22;
+  background: transparent;
+}
+
+.zoom-toggle-btn {
+  position: relative;
+  z-index: 24;
+}
+
+.zoom-popout {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  z-index: 25;
+  white-space: nowrap;
+}
+
+.zoom-label-btn {
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  min-width: 44px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.zoom-label-btn:hover {
+  background: #f0eee6;
+  color: var(--text);
+}
+
 @media (max-width: 560px) {
   .style-panel { width: 168px; padding: 8px; }
   .swatch { width: 24px; height: 24px; }

@@ -45,6 +45,7 @@
     :palette {:palette-id "cc-29" :color "#212123" :bg "#f2f0e5" :bg-mode false}
     :palette-open false
     :menu-open false
+    :zoom-open false
     :size "m"
     :fill "none"
     :drawing []
@@ -981,18 +982,32 @@
          [:i.ti.ti-x]])]]))
 
 (defn toolbar []
-  [:div.toolbar
-   [tool-button :select "ti-pointer" "Select"]
-   [tool-button :pan "ti-hand-stop" "Pan"]
-   [tool-button :draw "ti-pencil" "Draw"]
-   [tool-button :eraser "ti-eraser" "Eraser"]
-   [:span.zoom-label (str (js/Math.round (* 100 (get-in @app [:viewport :zoom]))) "%")]
-   [:button.icon-btn {:title "Zoom out" :onClick #(zoom-by (/ 1 1.25) (/ (.-innerWidth js/window) 2) (/ (.-innerHeight js/window) 2))}
-    [:i.ti.ti-zoom-out]]
-   [:button.icon-btn {:title "Zoom in" :onClick #(zoom-by 1.25 (/ (.-innerWidth js/window) 2) (/ (.-innerHeight js/window) 2))}
-    [:i.ti.ti-zoom-in]]
-   [:button.icon-btn {:title "Reset zoom (100%)" :onClick reset-zoom}
-    [:i.ti.ti-zoom-reset]]])
+  (let [st @app
+        zoom-open? (:zoom-open st)
+        zoom-pct (str (js/Math.round (* 100 (get-in st [:viewport :zoom]))) "%")]
+    [:div.toolbar
+     [tool-button :select "ti-pointer" "Select"]
+     [tool-button :pan "ti-hand-stop" "Pan"]
+     [tool-button :draw "ti-pencil" "Draw"]
+     [tool-button :eraser "ti-eraser" "Eraser"]
+     [:div.zoom-control-wrap
+      (when zoom-open?
+        [:div.zoom-backdrop {:onClick #(swap! app assoc :zoom-open false)}])
+      [:button.icon-btn.zoom-toggle-btn
+       {:class (when zoom-open? "active")
+        :title (str "Zoom (" zoom-pct ")")
+        :onClick #(swap! app update :zoom-open not)}
+       [:i.ti.ti-search]]
+      (when zoom-open?
+        [:div.zoom-popout
+         [:button.icon-btn {:title "Zoom out" :onClick #(zoom-by (/ 1 1.25) (/ (.-innerWidth js/window) 2) (/ (.-innerHeight js/window) 2))}
+          [:i.ti.ti-zoom-out]]
+         [:button.zoom-label-btn {:title "Reset zoom (100%)" :onClick reset-zoom}
+          zoom-pct]
+         [:button.icon-btn {:title "Zoom in" :onClick #(zoom-by 1.25 (/ (.-innerWidth js/window) 2) (/ (.-innerHeight js/window) 2))}
+          [:i.ti.ti-zoom-in]]
+         [:button.icon-btn {:title "Reset zoom (100%)" :onClick reset-zoom}
+          [:i.ti.ti-zoom-reset]]])]]))
 
 (defn palette-toggle []
   (let [st @app

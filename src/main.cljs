@@ -925,6 +925,37 @@
    [:i.ti {:class icon-class}]
    [:span {:style {:display "none"}} label]])
 
+(defn rename-page! [old-name new-name]
+  (let [old-n (str/trim (str old-name))
+        new-n (str/trim (str new-name))]
+    (when (and (seq new-n) (not= old-n new-n))
+      (if (idb)
+        (do (when (= (:page @app) old-n)
+              (save-page!))
+            (-> (.get (idb) (str "sketchthing:" old-n))
+                (.then (fn [data]
+                         (let [d (or data (clj->js {:shapes (:shapes @app)
+                                                    :trace (:trace @app)
+                                                    :palette (:palette @app)}))]
+                           (-> (.set (idb) (str "sketchthing:" new-n) d)
+                               (.then (fn [_] (.del (idb) (str "sketchthing:" old-n))))
+                               (.then (fn [_]
+                                        (when (= (:page @app) old-n)
+                                          (swap! app assoc :page new-n))
+                                        (refresh-pages!)))))))
+                (.catch (fn [e] (js/console.error "rename failed" e)))))
+        (when (= (:page @app) old-n)
+          (swap! app assoc :page new-n))))))
+
+(defonce editing-page-name (r/atom nil))
+(defonce editing-page-val (r/atom ""))
+
+(defn commit-page-rename! [old-p]
+  (let [new-p (str/trim (str @editing-page-val))]
+    (reset! editing-page-name nil)
+    (when (and (seq new-p) (not= old-p new-p))
+      (rename-page! old-p new-p))))
+
 (defn switch-page! [new-page]
   (let [p (str/trim (str new-page))]
     (when (and (seq p) (not= p (:page @app)))
@@ -1112,14 +1143,36 @@
      [:div.menu-pages-list
       (for [p pages]
         ^{:key p}
-        [:button.menu-item.page-item
-         {:class (when (= p cur-page) "active")
-          :onClick (fn []
-                     (close!)
-                     (when (not= p cur-page)
-                       (switch-page! p)))}
-         [:i.ti {:class (if (= p cur-page) "ti-file-check" "ti-file")}]
-         [:span.page-item-name p]])]]))
+        (if (= @editing-page-name p)
+          [:div.page-item-row.editing
+           [:input.page-input.page-item-input
+            {:type "text"
+             :autoFocus true
+             :value @editing-page-val
+             :ref (fn [el] (when el (.focus el)))
+             :onChange #(reset! editing-page-val (.. % -target -value))
+             :onBlur #(commit-page-rename! p)
+             :onKeyDown (fn [e]
+                          (case (.-key e)
+                            "Enter" (commit-page-rename! p)
+                            "Escape" (reset! editing-page-name nil)
+                            nil))}]]
+          [:div.page-item-row {:class (when (= p cur-page) "active")}
+           [:button.page-item-select
+            {:title (str "Switch to " p)
+             :onClick (fn []
+                        (close!)
+                        (when (not= p cur-page)
+                          (switch-page! p)))}
+            [:i.ti {:class (if (= p cur-page) "ti-file-check" "ti-file")}]
+            [:span.page-item-name p]]
+           [:button.page-edit-btn
+            {:title "Edit page name"
+             :onClick (fn [e]
+                        (.stopPropagation e)
+                        (reset! editing-page-name p)
+                        (reset! editing-page-val p))}
+            [:i.ti.ti-pencil]]]))]]))
 
 (defn root []
   [:div.app-root

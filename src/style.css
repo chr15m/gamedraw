@@ -36,6 +36,10 @@ html, body, #app {
   -webkit-user-select: none;
   cursor: crosshair;
 }
+.canvas-svg.tool-select { cursor: default; }
+.canvas-svg.tool-pan { cursor: grab; }
+.canvas-svg.tool-draw { cursor: crosshair; }
+.canvas-svg.tool-eraser { cursor: crosshair; }
 
 /* Panels ------------------------------------------------------------------ */
 .top-bar {

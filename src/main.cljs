@@ -381,8 +381,9 @@
 
       :else
       (do (.setPointerCapture @canvas-el (.-pointerId ne))
-          (swap! app assoc :selection #{} :edit-id nil
-                          :drag {:kind :marquee :start [x y] :cur [x y]})))))
+          (let [init-sel (if (.-shiftKey ne) (:selection st) #{})]
+            (swap! app assoc :selection init-sel :edit-id nil
+                            :drag {:kind :marquee :start [x y] :cur [x y] :init-sel init-sel}))))))
 
 (defn select-move [x y]
   (let [st @app
@@ -390,7 +391,19 @@
         w (client->world st x y)]
     (cond
       (= (:kind drag) :marquee)
-      (swap! app assoc-in [:drag :cur] [x y])
+      (let [[sx sy] (:start drag)
+            w1 (client->world st (min sx x) (min sy y))
+            w2 (client->world st (max sx x) (max sy y))
+            ids (set (for [s (:shapes st)
+                           :when (let [b (shape-bbox s)]
+                                   (and (<= (:x1 b) (:x w2)) (>= (:x2 b) (:x w1))
+                                        (<= (:y1 b) (:y w2)) (>= (:y2 b) (:y w1))))]
+                       (:id s)))
+            sel (into (or (:init-sel drag) #{}) ids)]
+        (swap! app (fn [a]
+                     (-> a
+                         (assoc-in [:drag :cur] [x y])
+                         (assoc :selection sel)))))
 
       (= (:kind drag) :move)
       (let [dx (- (:x w) (:x (:last drag)))
@@ -421,13 +434,13 @@
     (when (= (:kind drag) :marquee)
       (let [[sx sy] (:start drag) [cx cy] (:cur drag)
             w1 (client->world st (min sx cx) (min sy cy))
-            w2 (client->world st (max sx cx) (max sy cy))]
-        (swap! app assoc :selection
-               (set (for [s (:shapes st)
-                          :when (let [b (shape-bbox s)]
-                                  (and (<= (:x1 b) (:x w2)) (>= (:x2 b) (:x w1))
-                                       (<= (:y1 b) (:y w2)) (>= (:y2 b) (:y w1))))]
-                      (:id s))))))
+            w2 (client->world st (max sx cx) (max sy cy))
+            ids (set (for [s (:shapes st)
+                           :when (let [b (shape-bbox s)]
+                                   (and (<= (:x1 b) (:x w2)) (>= (:x2 b) (:x w1))
+                                        (<= (:y1 b) (:y w2)) (>= (:y2 b) (:y w1))))]
+                       (:id s)))]
+        (swap! app assoc :selection (into (or (:init-sel drag) #{}) ids))))
     (swap! app assoc :drag nil :marquee nil)))
 
 (defn start-tool [ne tool x y pid]
@@ -487,9 +500,10 @@
 
       (and (= type "touch") (contains? @active-pointers pid))
       (do (swap! active-pointers assoc pid [x y])
-          (if (seq (:drawing st))
-            (add-draw-points ne)
-            (if (seq (:eraser st)) (add-eraser-points ne))))
+          (cond
+            (seq (:drawing st)) (add-draw-points ne)
+            (seq (:eraser st)) (add-eraser-points ne)
+            (= (:tool st) :select) (when (:drag st) (select-move x y))))
 
       (= (:tool st) :draw)
       (when (seq (:drawing st)) (add-draw-points ne))
@@ -813,7 +827,8 @@
         {:keys [x y zoom]} viewport
         bg (get-in @app [:palette :bg])]
     [:svg.canvas-svg
-     {:ref (fn [el] (when el (reset! canvas-el el)))
+     {:class (str "tool-" (name (:tool @app)))
+      :ref (fn [el] (when el (reset! canvas-el el)))
       :onPointerDown on-down
       :onPointerMove on-move
       :onPointerUp on-up
@@ -838,10 +853,12 @@
                     :strokeWidth (/ 8 zoom) :strokeLinecap "round" :pointerEvents "none"}])]
      (when (= (:kind drag) :marquee)
        (let [[sx sy] (:start drag) [cx cy] (:cur drag)]
-         [:rect {:x (min sx cx) :y (min sy cy)
-                 :width (js/Math.abs (- cx sx)) :height (js/Math.abs (- cy sy))
-                 :fill "rgba(68,101,233,0.12)" :stroke "#4465e9" :strokeWidth 1
-                 :strokeDasharray "4 3" :pointerEvents "none"}]))
+         [:rect.marquee-rect
+          {:x (min sx cx) :y (min sy cy)
+           :width (js/Math.abs (- cx sx)) :height (js/Math.abs (- cy sy))
+           :rx 2 :ry 2
+           :fill "rgba(68,101,233,0.12)" :stroke "#4465e9" :strokeWidth 1.5
+           :strokeDasharray "4 3" :pointerEvents "none"}]))
      (when (seq selection) [selection-overlay])
      (when edit-id [vertex-overlay])]))
 

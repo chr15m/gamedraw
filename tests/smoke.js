@@ -1,5 +1,7 @@
 // Load the new SVG app and report errors + a screenshot.
-const { chromium } = require('/root/pwtest/node_modules/playwright');
+let playwright;
+try { playwright = require('playwright'); } catch (e) { playwright = require('/root/pwtest/node_modules/playwright'); }
+const { chromium } = playwright;
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });

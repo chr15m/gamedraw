@@ -1,9 +1,15 @@
 // Phase 1 spike test protocol (SVG_REBUILD_SPEC.md section 5).
 // Run: node tests/test_spike.js
-const { chromium } = require('/root/pwtest/node_modules/playwright');
+let playwright;
+try { playwright = require('playwright'); } catch (e) { playwright = require('/root/pwtest/node_modules/playwright'); }
+const { chromium } = playwright;
 const assert = require('assert');
+const fs = require('fs');
 
 const URL = process.env.BASE_URL || 'http://localhost:8000/index.html';
+const executablePath = process.env.CHROMIUM_PATH ||
+  ['/usr/bin/chromium-browser', '/usr/bin/chromium', '/usr/bin/google-chrome']
+    .find((p) => fs.existsSync(p));
 
 async function shapeCount(page) {
   return page.evaluate(() => document.querySelectorAll('.canvas-svg g.world > path, .canvas-svg g.world > circle').length);
@@ -27,7 +33,7 @@ async function drawStroke(page, pts, steps = 24) {
 }
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ executablePath, args: ['--no-sandbox'] });
   const results = [];
   const pass = (name) => { results.push(`PASS ${name}`); console.log('PASS', name); };
 

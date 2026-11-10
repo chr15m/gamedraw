@@ -1,5 +1,7 @@
 // Discovery: dump interactive elements in the existing tldraw app.
-const { chromium } = require('/root/pwtest/node_modules/playwright');
+let playwright;
+try { playwright = require('playwright'); } catch (e) { playwright = require('/root/pwtest/node_modules/playwright'); }
+const { chromium } = playwright;
 
 (async () => {
   const browser = await chromium.launch();

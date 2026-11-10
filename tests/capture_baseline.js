@@ -1,6 +1,8 @@
 // Phase 0: capture baseline screenshots of the existing tldraw app.
 // Run: node tests/capture_baseline.js
-const { chromium } = require('/root/pwtest/node_modules/playwright');
+let playwright;
+try { playwright = require('playwright'); } catch (e) { playwright = require('/root/pwtest/node_modules/playwright'); }
+const { chromium } = playwright;
 const path = require('path');
 
 const OUT = path.join(__dirname, 'baseline-screenshots');

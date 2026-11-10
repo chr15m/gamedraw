@@ -983,7 +983,9 @@
            :rx 2 :ry 2
            :fill "rgba(68,101,233,0.12)" :stroke "#4465e9" :strokeWidth 1.5
            :strokeDasharray "4 3" :pointerEvents "none"}]))
-     (when (seq selection) [selection-overlay])
+     ;; While editing vertices, suppress the selection overlay so its move/scale
+     ;; handles don't intercept clicks meant to insert/select vertices.
+     (when (and (seq selection) (nil? edit-id)) [selection-overlay])
      (when edit-id [vertex-overlay])]))
 
 (defn tool-button [tool icon-class label & [extra-class]]

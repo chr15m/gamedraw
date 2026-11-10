@@ -180,7 +180,10 @@ html, body, #app {
   background: #f0eee6;
   color: var(--text);
 }
-.menu-section-action .ti { font-size: 14px; }
+.menu-section-action .ti {
+  font-size: 14px;
+  pointer-events: none;
+}
 
 .menu-pages-list {
   display: flex;
@@ -242,7 +245,10 @@ html, body, #app {
   background: #e2dfd5;
   color: var(--text);
 }
-.page-edit-btn .ti { font-size: 14px; }
+.page-edit-btn .ti {
+  font-size: 14px;
+  pointer-events: none;
+}
 
 .page-item-input {
   flex: 1;

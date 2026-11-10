@@ -723,46 +723,53 @@
                        stored (->> (array-seq ks)
                                    (filter #(.startsWith (str %) prefix))
                                    (mapv #(subs (str %) (count prefix))))
-                       all-p (-> (conj stored cur)
-                                 (distinct)
-                                 (sort)
-                                 (vec))]
-                   (reset! all-pages all-p))))
+                       all-p (->> (concat stored @all-pages [cur])
+                                  (remove str/blank?)
+                                  (distinct)
+                                  (sort)
+                                  (vec))]
+                   (reset! all-pages (if (seq all-p) all-p [cur])))))
         (.catch (fn [e] (js/console.error "failed to fetch pages" e))))
-    (reset! all-pages [(:page @app)])))
+    (reset! all-pages (vec (distinct (concat @all-pages [(:page @app)]))))))
 
 (defn save-page! []
   (let [st @app]
     (when (and (idb) (:page st))
       (-> (.set (idb) (str "sketchthing:" (:page st))
                 (clj->js {:shapes (:shapes st) :trace (:trace st) :palette (:palette st)}))
-          (.then (fn [_] (refresh-pages!)))
           (.catch (fn [e] (js/console.error "save failed" e)))))))
 
 (defn schedule-save! []
   (when-let [t @save-timer] (js/clearTimeout t))
   (reset! save-timer (js/setTimeout save-page! 600)))
 
+(defn cancel-save! []
+  (when-let [t @save-timer] (js/clearTimeout t))
+  (reset! save-timer nil))
+
 (defn load-page! [date]
-  (let [fallback (fn [] (swap! app (fn [a] (-> a
-                                                (assoc :page date :drawing [] :eraser [])
-                                                (assoc :shapes []) (assoc :trace nil)
-                                                (assoc :selection #{} :edit-id nil)
-                                                (assoc :history [] :future [])))))]
-    (if (idb)
-      (-> (.get (idb) (str "sketchthing:" date))
-          (.then (fn [data]
-                   (let [d (when data (js->clj data :keywordize-keys true))]
+  (cancel-save!)
+  (swap! all-pages (fn [ps] (vec (sort (distinct (conj (or ps []) date))))))
+  (swap! app (fn [a] (-> a
+                         (assoc :page date :drawing [] :eraser [])
+                         (assoc :shapes []) (assoc :trace nil)
+                         (assoc :selection #{} :edit-id nil)
+                         (assoc :history [] :future []))))
+  ;; Clearing :shapes above queues a debounced save; cancel it so an empty
+  ;; canvas can never overwrite the page we're about to load.
+  (cancel-save!)
+  (when (idb)
+    (-> (.get (idb) (str "sketchthing:" date))
+        (.then (fn [data]
+                 (when (and data (= (:page @app) date))
+                   (let [d (js->clj data :keywordize-keys true)]
                      (swap! app (fn [a]
                                   (cond-> (-> a
-                                              (assoc :page date :drawing [] :eraser [])
                                               (assoc :shapes (vec (:shapes d)))
-                                              (assoc :trace (:trace d))
-                                              (assoc :selection #{} :edit-id nil)
-                                              (assoc :history [] :future []))
-                                    (:palette d) (assoc :palette (:palette d))))))))
-          (.catch (fn [_] (fallback))))
-      (fallback))))
+                                              (assoc :trace (:trace d)))
+                                    (:palette d) (assoc :palette (:palette d)))))))))
+        (.catch (fn [e] (js/console.error "load-page error:" e)))))
+  (refresh-pages!))
 
 ;; ---------------------------------------------------------------------------
 ;; SVG export
@@ -990,23 +997,17 @@
   (let [old-n (str/trim (str old-name))
         new-n (str/trim (str new-name))]
     (when (and (seq new-n) (not= old-n new-n))
-      (if (idb)
-        (do (when (= (:page @app) old-n)
-              (save-page!))
-            (-> (.get (idb) (str "sketchthing:" old-n))
-                (.then (fn [data]
-                         (let [d (or data (clj->js {:shapes (:shapes @app)
-                                                    :trace (:trace @app)
-                                                    :palette (:palette @app)}))]
-                           (-> (.set (idb) (str "sketchthing:" new-n) d)
-                               (.then (fn [_] (.del (idb) (str "sketchthing:" old-n))))
-                               (.then (fn [_]
-                                        (when (= (:page @app) old-n)
-                                          (swap! app assoc :page new-n))
-                                        (refresh-pages!)))))))
-                (.catch (fn [e] (js/console.error "rename failed" e)))))
-        (when (= (:page @app) old-n)
-          (swap! app assoc :page new-n))))))
+      (when (= (:page @app) old-n)
+        (swap! app assoc :page new-n))
+      (swap! all-pages (fn [ps] (vec (sort (distinct (map #(if (= % old-n) new-n %) ps))))))
+      (when (idb)
+        (let [d (clj->js {:shapes (:shapes @app)
+                          :trace (:trace @app)
+                          :palette (:palette @app)})]
+          (-> (.set (idb) (str "sketchthing:" new-n) d)
+              (.then (fn [_] (.del (idb) (str "sketchthing:" old-n))))
+              (.then (fn [_] (refresh-pages!)))
+              (.catch (fn [e] (js/console.error "rename error:" e)))))))))
 
 (defn switch-page! [new-page]
   (let [p (str/trim (str new-page))]
@@ -1159,11 +1160,14 @@
       (let [close! #(swap! app assoc :menu-open false)
             cur-page (:page @app)
             pages @all-pages
-            commit-rename! (fn [old-p]
-                             (let [new-p (str/trim (str @editing-page-val))]
-                               (reset! editing-page-name nil)
-                               (when (and (seq new-p) (not= old-p new-p))
-                                 (rename-page! old-p new-p))))]
+            commit-rename! (fn [old-p & [explicit-val]]
+                             (when @editing-page-name
+                               (let [val (or explicit-val @editing-page-val)
+                                     new-p (str/trim (str val))]
+                                 (reset! editing-page-name nil)
+                                 (reset! editing-page-val "")
+                                 (when (and (seq new-p) (not= old-p new-p))
+                                   (rename-page! old-p new-p)))))]
         [:div.hamburger-menu
          [:button.menu-item {:onClick (fn [] (close!) (clear-page!))}
           [:i.ti.ti-eraser] "Clear canvas"]
@@ -1178,7 +1182,7 @@
            {:title "New page"
             :onClick (fn []
                        (close!)
-                       (let [new-name (str "page-" (inc (count pages)))]
+                       (let [new-name (str "page-" (inc (count (or pages @all-pages []))))]
                          (switch-page! new-name)))}
            [:i.ti.ti-plus]]]
          [:div.menu-pages-list
@@ -1189,13 +1193,16 @@
                [:input.page-input.page-item-input
                 {:type "text"
                  :autoFocus true
-                 :value @editing-page-val
+                 :defaultValue p
                  :ref (fn [el] (when el (.focus el)))
                  :onChange #(reset! editing-page-val (.. % -target -value))
-                 :onBlur #(commit-rename! p)
+                 :onBlur (fn [e] (commit-rename! p (.. e -target -value)))
                  :onKeyDown (fn [e]
                               (case (.-key e)
-                                "Enter" (commit-rename! p)
+                                "Enter" (let [target (.-target e)
+                                              val (when target (.-value target))]
+                                          (commit-rename! p val)
+                                          (when target (.blur target)))
                                 "Escape" (reset! editing-page-name nil)
                                 nil))}]]
               [:div.page-item-row {:class (when (= p cur-page) "active")}

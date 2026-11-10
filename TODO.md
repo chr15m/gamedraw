@@ -2,15 +2,22 @@
 
 ## TODO
 
-- [ ] Threshold pinch to zoom so two finger dragging doesn't trigger it so easily.
+- [x] Vector flood fill: interior fills inside shapes, cancel and set page background if click is outside or hits bounding box of shapes.
+  - [x] Bug: fill not touching the sides of the shape and filling over interior cutouts.
+  - [x] Bug: two-finger zoom/pan with fill tool causes a fill to start when it should not.
+- [x] New toggle for straight vs bezier path rendering in the palette/line editing UI.
+- [ ] Shape z-order editing (back/forward, send-to-back/front) UI.
 
-## Next
+## Next / Later
 
 - [ ] sync to nostr
+- [ ] Organize pages into projects (project-level grouping or snapshots)
+
+- [ ] Threshold pinch to zoom so two finger dragging doesn't trigger it so easily.
 - [ ] Display size of current page definition stringified in kb in top right
 - [ ] Implement stroke and fill order toggle
 - [ ] Support custom palette import from hex lists (Lospec format)
-- [ ] Organize pages into projects (project-level grouping or snapshots)
+- [ ] Implement sprite underlay grid guide starting at (0, 0) with custom dimensions and slot counts
 
 ## Done
 
@@ -53,8 +60,4 @@
 - [x] Hide unnecessary default tools from toolbar (arrows, geo shapes, notes, frames, laser)
 - [x] Implement constant-width strokes (disable pressure variance for sprite drawing)
 - [x] Bug: sometimes when "simplifying" it results in even more points
-
-## Maybe Later
-
-- [ ] Implement sprite underlay grid guide starting at (0, 0) with custom dimensions and slot counts
 

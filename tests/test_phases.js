@@ -223,6 +223,10 @@ const expectTool = (page, title) =>
     await expectTool(page, 'Draw');
     await page.keyboard.press('e');
     await expectTool(page, 'Eraser');
+    await page.keyboard.press('b');
+    await expectTool(page, 'Flood fill');
+    await page.keyboard.press('f');
+    await expectTool(page, 'Flood fill');
     await page.keyboard.press('h');
     await expectTool(page, 'Pan');
 
@@ -292,6 +296,79 @@ const expectTool = (page, title) =>
     assert(!(await page.$('.bg-btn.active')), 'bg-btn should toggle off');
     pass('Artboard background mode (.bg-btn toggle + swatch selection)');
     await page.screenshot({ path: 'tests/baseline-screenshots/new-08-path-tools.png' });
+
+    // ---------------- Vector Flood Fill --------------------------------------
+    await fresh(page);
+    const defaultBg = await page.evaluate(() => document.querySelector('.canvas-svg rect')?.getAttribute('fill'));
+    if (!(await page.$('.style-panel'))) {
+      await page.click('.palette-toggle-btn');
+      await page.waitForSelector('.style-panel');
+    }
+    await page.click('.swatch[title="#4b80ca"]');
+    await page.keyboard.press('b');
+    await expectTool(page, 'Flood fill');
+
+    // Click on empty canvas -> changes background color
+    await page.mouse.click(200, 200);
+    await page.waitForTimeout(150);
+    assert((await page.evaluate(() => document.querySelector('.canvas-svg rect')?.getAttribute('fill'))) === '#4b80ca',
+           'empty canvas click should set bg color');
+    await page.keyboard.press('Control+z');
+    await page.waitForTimeout(150);
+    assert((await page.evaluate(() => document.querySelector('.canvas-svg rect')?.getAttribute('fill'))) === defaultBg,
+           'undo should restore background color');
+
+    // Draw closed shape and fill interior
+    await drawTool(page);
+    const boxPts = [[300, 300], [500, 300], [500, 500], [300, 500], [300, 300]];
+    await drawStroke(page, boxPts, 10);
+    assert((await shapeCount(page)) === 1, 'stroke drawn');
+
+    await page.keyboard.press('b');
+    await page.mouse.click(400, 400);
+    await page.waitForTimeout(250);
+    assert((await shapeCount(page)) === 2, 'flood fill inside closed shape should add a fill shape');
+
+    const fillInfo = await page.evaluate(() => {
+      const ps = [...document.querySelectorAll('.canvas-svg g.world > path')];
+      return {
+        firstStroke: ps[0].getAttribute('stroke'),
+        firstFill: ps[0].getAttribute('fill'),
+        bg: document.querySelector('.canvas-svg rect')?.getAttribute('fill')
+      };
+    });
+    assert(fillInfo.firstStroke === 'none', 'fill path should have stroke none');
+    assert(fillInfo.firstFill === '#4b80ca', 'fill path should have selected color');
+    assert(fillInfo.bg === defaultBg, 'canvas background should not change for interior fill');
+
+    // Click outside bounding box of shapes -> sets bg color
+    await page.mouse.click(100, 100);
+    await page.waitForTimeout(150);
+    assert((await page.evaluate(() => document.querySelector('.canvas-svg rect')?.getAttribute('fill'))) === '#4b80ca',
+           'click outside bbox should set bg color');
+    await page.keyboard.press('Control+z');
+    await page.waitForTimeout(150);
+    assert((await page.evaluate(() => document.querySelector('.canvas-svg rect')?.getAttribute('fill'))) === defaultBg,
+           'undo should restore background color after outside click');
+
+    // Open shape -> leak to bbox -> sets bg color without adding shape
+    await page.click('.menu-btn');
+    await page.waitForSelector('.hamburger-menu');
+    await page.click('.hamburger-menu button:has-text("Clear canvas")');
+    await page.waitForTimeout(200);
+
+    await drawTool(page);
+    const uShape = [[300, 300], [300, 500], [500, 500], [500, 300]];
+    await drawStroke(page, uShape, 10);
+    assert((await shapeCount(page)) === 1);
+
+    await page.keyboard.press('b');
+    await page.mouse.click(400, 450);
+    await page.waitForTimeout(250);
+    assert((await shapeCount(page)) === 1, 'uncontained fill should not create a shape');
+    assert((await page.evaluate(() => document.querySelector('.canvas-svg rect')?.getAttribute('fill'))) === '#4b80ca',
+           'uncontained fill leaking to bbox should set bg color');
+    pass('Vector flood fill (interior fill, bbox leak to background, click outside to background, undo)');
 
     // ---------------- Phase 4: vertex editing & insertion ---------------------
     await fresh(page);

@@ -49,6 +49,8 @@
     :actions-open false
     :size "m"
     :fill "none"
+    :curve :bezier
+    :pending-fill nil
     :drawing []
     :eraser []
     :shapes []
@@ -75,7 +77,7 @@
 
 (defn mid [a b] {:x (/ (+ (:x a) (:x b)) 2.0) :y (/ (+ (:y a) (:y b)) 2.0)})
 
-(defn path-d [pts closed?]
+(defn bezier-subpath-d [pts closed?]
   (let [pts (vec pts) n (count pts)]
     (cond
       (zero? n) ""
@@ -90,6 +92,33 @@
                           (str " Q " (:x p) " " (:y p) " " (:x m) " " (:y m)))
                         (str " L " (:x p) " " (:y p))))))
            (when closed? " Z")))))
+
+(defn straight-subpath-d [pts closed?]
+  (let [pts (vec pts) n (count pts)]
+    (cond
+      (zero? n) ""
+      (= n 1) (str "M " (:x (first pts)) " " (:y (first pts)))
+      :else
+      (str "M " (:x (first pts)) " " (:y (first pts))
+           (apply str
+                  (for [i (range 1 n)]
+                    (str " L " (:x (nth pts i)) " " (:y (nth pts i)))))
+           (when closed? " Z")))))
+
+(defn subpath-d [pts closed? curve]
+  (if (= curve :straight)
+    (straight-subpath-d pts closed?)
+    (bezier-subpath-d pts closed?)))
+
+(defn shape-path-d [s]
+  (let [curve (or (:curve s) :bezier)
+        outer (subpath-d (:points s) (:is-closed s) curve)
+        holes (when-let [hs (seq (:holes s))]
+                (apply str (for [h hs] (str " " (subpath-d h true curve)))))]
+    (str outer holes)))
+
+(defn path-d [pts closed? & [curve]]
+  (subpath-d pts closed? (or curve :bezier)))
 
 (defn shape-segments [s]
   (let [pts (:points s)]
@@ -172,12 +201,16 @@
         is-filled? (and (:is-closed s)
                         (some? (:fill s))
                         (not= (:fill s) "none")
-                        (not= (:fill s) "transparent"))]
-    (or stroke-hit?
-        (and is-filled? (pt-in-polygon? p pts)))))
+                        (not= (:fill s) "transparent"))
+        in-fill? (and is-filled?
+                      (pt-in-polygon? p pts)
+                      (not-any? #(pt-in-polygon? p %) (:holes s [])))]
+    (or stroke-hit? in-fill?)))
 
 (defn translate-pts [s dx dy]
-  (update s :points #(mapv (fn [p] (-> p (update :x + dx) (update :y + dy))) %)))
+  (let [shift (fn [p] (-> p (update :x + dx) (update :y + dy)))]
+    (cond-> (update s :points #(mapv shift %))
+      (seq (:holes s)) (update :holes (fn [hs] (mapv #(mapv shift %) hs))))))
 
 (defn rotate-pt [c ang p]
   (let [cos (js/Math.cos ang) sin (js/Math.sin ang)
@@ -206,25 +239,36 @@
 (defn history-push! []
   (swap! app (fn [a]
                (-> a
-                   (update :history #(vec (take-last 120 (conj % (:shapes a)))))
+                   (update :history #(vec (take-last 120 (conj % {:shapes (:shapes a)
+                                                                  :bg (get-in a [:palette :bg])}))))
                    (assoc :future [])))))
 
 (defn undo! []
   (swap! app (fn [{:keys [history shapes] :as a}]
                (if (seq history)
-                 (-> a (assoc :shapes (peek history))
-                     (update :history pop)
-                     (update :future conj shapes)
-                     (assoc :selection #{} :edit-id nil))
+                 (let [entry (peek history)
+                       cur-entry {:shapes shapes :bg (get-in a [:palette :bg])}
+                       new-shapes (if (map? entry) (:shapes entry) entry)
+                       new-bg (when (map? entry) (:bg entry))]
+                   (cond-> (-> a (assoc :shapes new-shapes)
+                               (update :history pop)
+                               (update :future conj cur-entry)
+                               (assoc :selection #{} :edit-id nil))
+                     new-bg (assoc-in [:palette :bg] new-bg)))
                  a))))
 
 (defn redo! []
   (swap! app (fn [{:keys [future shapes] :as a}]
                (if (seq future)
-                 (-> a (assoc :shapes (peek future))
-                     (update :future pop)
-                     (update :history conj shapes)
-                     (assoc :selection #{} :edit-id nil))
+                 (let [entry (peek future)
+                       cur-entry {:shapes shapes :bg (get-in a [:palette :bg])}
+                       new-shapes (if (map? entry) (:shapes entry) entry)
+                       new-bg (when (map? entry) (:bg entry))]
+                   (cond-> (-> a (assoc :shapes new-shapes)
+                               (update :future pop)
+                               (update :history conj cur-entry)
+                               (assoc :selection #{} :edit-id nil))
+                     new-bg (assoc-in [:palette :bg] new-bg)))
                  a))))
 
 ;; ---------------------------------------------------------------------------
@@ -242,6 +286,7 @@
                                 :stroke (get-in a [:palette :color])
                                 :stroke-width (get sizes (:size a) 3.5)
                                 :fill (if (= (:fill a) "solid") (get-in a [:palette :color]) "none")
+                                :curve :bezier
                                 :is-closed false})
                        (assoc :drawing [])))))))
 
@@ -265,11 +310,16 @@
                    (assoc a :eraser pts
                           :shapes (eraser-filter (:shapes a) pts (get-in a [:viewport :zoom]))))))))
 
+(defn set-bg! [hex]
+  (when (not= (get-in @app [:palette :bg]) hex)
+    (history-push!)
+    (swap! app assoc-in [:palette :bg] hex)))
+
 (defn pick-color [hex]
   (let [st @app sel (:selection st)]
     (if (get-in st [:palette :bg-mode])
-      (swap! app assoc-in [:palette :bg] hex)
-      (do (history-push!)
+      (set-bg! hex)
+      (do (when (seq sel) (history-push!))
           (swap! app (fn [a]
                        (-> a
                            (assoc-in [:palette :color] hex)
@@ -329,19 +379,34 @@
                          (assoc :shapes new-shapes)
                          (assoc :fill new-fill))))))))
 
-(defn simplify-shape [s]
-  (if (> (count (:points s)) 2)
-    (let [js-pts (clj->js (mapv (fn [p] #js {:x (:x p) :y (:y p)}) (:points s)))
+(defn simplify-pts [pts]
+  (if (> (count pts) 2)
+    (let [js-pts (clj->js (mapv (fn [p] #js {:x (:x p) :y (:y p)}) pts))
           simple (js/simplify js-pts 2 true)
-          pts (mapv (fn [p] {:x (.-x p) :y (.-y p)}) (array-seq simple))]
-      (if (>= (count pts) 2) (assoc s :points pts) s))
-    s))
+          s-pts (mapv (fn [p] {:x (.-x p) :y (.-y p)}) (array-seq simple))]
+      (if (>= (count s-pts) 2) s-pts pts))
+    pts))
+
+(defn simplify-shape [s]
+  (cond-> (update s :points simplify-pts)
+    (seq (:holes s)) (update :holes (fn [hs] (mapv simplify-pts hs)))))
 
 (defn simplify-selection! []
   (let [sel (:selection @app)]
     (when (seq sel)
       (history-push!)
       (swap! app update :shapes #(update-selected % sel simplify-shape)))))
+
+(defn toggle-curve! []
+  (let [st @app
+        sel (:selection st)
+        sel-shapes (selection-shapes (:shapes st) sel)]
+    (when (seq sel-shapes)
+      (history-push!)
+      (let [currently-straight? (every? #(= (:curve %) :straight) sel-shapes)
+            new-curve (if currently-straight? :bezier :straight)]
+        (swap! app update :shapes
+               (fn [ss] (update-selected ss sel #(assoc % :curve new-curve))))))))
 
 (defn duplicate! []
   (let [st @app sel (:selection st)]
@@ -360,9 +425,149 @@
                              (update :shapes #(remove-selected % sel))
                              (assoc :selection #{} :edit-id nil)))))))
 
-(defn clear-page! []
-  (history-push!)
-  (swap! app assoc :shapes [] :selection #{} :edit-id nil))
+(defn shape-stroke-bbox [s]
+  (when-let [pts (seq (:points s))]
+    (let [hw (/ (or (:stroke-width s) 3.5) 2.0)]
+      {:x1 (- (apply min (map :x pts)) hw)
+       :y1 (- (apply min (map :y pts)) hw)
+       :x2 (+ (apply max (map :x pts)) hw)
+       :y2 (+ (apply max (map :y pts)) hw)})))
+
+(defn shapes-overall-bbox [shapes]
+  (let [bs (keep shape-stroke-bbox (filter #(and (:stroke %) (not= (:stroke %) "none")) shapes))]
+    (when (seq bs)
+      {:x1 (apply min (map :x1 bs))
+       :y1 (apply min (map :y1 bs))
+       :x2 (apply max (map :x2 bs))
+       :y2 (apply max (map :y2 bs))})))
+
+(defn perform-flood-fill [shapes bbox w]
+  (let [bbox-pad 6.0
+        bx1 (- (:x1 bbox) bbox-pad)
+        by1 (- (:y1 bbox) bbox-pad)
+        bx2 (+ (:x2 bbox) bbox-pad)
+        by2 (+ (:y2 bbox) bbox-pad)
+        bw (- bx2 bx1)
+        bh (- by2 by1)
+        max-dim 3000.0
+        effective-scale (min 2.0 (/ max-dim (max bw bh 1.0)))
+        cw (js/Math.ceil (* bw effective-scale))
+        ch (js/Math.ceil (* bh effective-scale))]
+    (if (or (< cw 4) (< ch 4))
+      {:hit-boundary? true}
+      (let [canvas (.createElement js/document "canvas")
+            ctx (.getContext canvas "2d")]
+        (set! (.-width canvas) cw)
+        (set! (.-height canvas) ch)
+        (set! (.-fillStyle ctx) "#ffffff")
+        (.fillRect ctx 0 0 cw ch)
+        (.save ctx)
+        (.scale ctx effective-scale effective-scale)
+        (.translate ctx (- bx1) (- by1))
+        (doseq [s shapes]
+          (when (and (:stroke s) (not= (:stroke s) "none"))
+            (let [pts (:points s)]
+              (when (seq pts)
+                (set! (.-strokeStyle ctx) "#000000")
+                (set! (.-lineWidth ctx) (or (:stroke-width s) 3.5))
+                (set! (.-lineCap ctx) "round")
+                (set! (.-lineJoin ctx) "round")
+                (.beginPath ctx)
+                (if (= 1 (count pts))
+                  (let [p (first pts)
+                        r (/ (or (:stroke-width s) 3.5) 2.0)]
+                    (set! (.-fillStyle ctx) "#000000")
+                    (.arc ctx (:x p) (:y p) r 0 (* 2 js/Math.PI))
+                    (.fill ctx))
+                  (let [n (count pts)]
+                    (.moveTo ctx (:x (first pts)) (:y (first pts)))
+                    (dotimes [i (dec n)]
+                      (let [idx (inc i)
+                            p (nth pts idx)]
+                        (if (= (:curve s) :straight)
+                          (.lineTo ctx (:x p) (:y p))
+                          (if (< idx (dec n))
+                            (let [m (mid p (nth pts (inc idx)))]
+                              (.quadraticCurveTo ctx (:x p) (:y p) (:x m) (:y m)))
+                            (.lineTo ctx (:x p) (:y p))))))
+                    (when (:is-closed s)
+                      (.closePath ctx))
+                    (.stroke ctx)))))))
+        (.restore ctx)
+        (let [sx (js/Math.round (* (- (:x w) bx1) effective-scale))
+              sy (js/Math.round (* (- (:y w) by1) effective-scale))]
+          (if (or (< sx 0) (< sy 0) (>= sx cw) (>= sy ch))
+            {:hit-boundary? true}
+            (let [img-data (.getImageData ctx 0 0 cw ch)
+                  u32 (js/Uint32Array. (.-buffer (.-data img-data)))
+                  pad-x1 (js/Math.floor (* bbox-pad effective-scale))
+                  pad-x2 (js/Math.ceil (- cw (* bbox-pad effective-scale)))
+                  pad-y1 (js/Math.floor (* bbox-pad effective-scale))
+                  pad-y2 (js/Math.ceil (- ch (* bbox-pad effective-scale)))
+                  fill-fn (or (.-sketchFloodFill js/window)
+                              (fn [_ _ _ _ _ _ _ _ _ _] #js {:hitBoundary true}))
+                  res (fill-fn u32 cw ch sx sy pad-x1 pad-x2 pad-y1 pad-y2 effective-scale)]
+              (cond
+                (.-onObstacle res) {:on-obstacle? true}
+                (.-hitBoundary res) {:hit-boundary? true}
+                :else
+                (let [raw (.-contour res)
+                      raw-holes (.-holes res)
+                      to-world (fn [pts-arr]
+                                 (mapv (fn [p]
+                                         {:x (+ bx1 (/ (.-x p) effective-scale))
+                                          :y (+ by1 (/ (.-y p) effective-scale))})
+                                       (array-seq pts-arr)))
+                      simplify-poly (fn [w-pts tol]
+                                      (let [js-pts (clj->js (mapv (fn [p] #js {:x (:x p) :y (:y p)}) w-pts))
+                                            simple (js/simplify js-pts tol true)]
+                                        (mapv (fn [p] {:x (.-x p) :y (.-y p)}) (array-seq simple))))]
+                  (if (and raw (> (.-length raw) 2))
+                    (let [outer-pts (simplify-poly (to-world raw) 0.8)
+                          holes (when (and raw-holes (pos? (.-length raw-holes)))
+                                  (vec (keep (fn [h]
+                                               (when (and h (> (.-length h) 2))
+                                                 (let [sp (simplify-poly (to-world h) 0.8)]
+                                                   (when (> (count sp) 2) sp))))
+                                             (array-seq raw-holes))))]
+                      (if (> (count outer-pts) 2)
+                        {:points outer-pts :holes (or holes [])}
+                        {:hit-boundary? false}))
+                    {:hit-boundary? false}))))))))))
+
+(defn flood-fill! [w]
+  (let [st @app
+        shapes (:shapes st)
+        fill-color (get-in st [:palette :color])
+        bbox (shapes-overall-bbox shapes)]
+    (cond
+      (or (nil? bbox)
+          (< (:x w) (:x1 bbox)) (> (:x w) (:x2 bbox))
+          (< (:y w) (:y1 bbox)) (> (:y w) (:y2 bbox)))
+      (set-bg! fill-color)
+
+      :else
+      (let [result (perform-flood-fill shapes bbox w)]
+        (cond
+          (:hit-boundary? result)
+          (set-bg! fill-color)
+
+          (seq (:points result))
+          (let [pts (:points result)
+                holes (:holes result [])
+                new-shape {:id (gen-id)
+                           :type :path
+                           :points pts
+                           :holes holes
+                           :stroke "none"
+                           :stroke-width 0
+                           :fill fill-color
+                           :curve :straight
+                           :is-closed true}]
+            (history-push!)
+            (swap! app update :shapes #(into [new-shape] %)))
+
+          :else nil)))))
 
 ;; ---------------------------------------------------------------------------
 ;; Pointer interaction
@@ -373,7 +578,8 @@
 (defn begin-scale [e handle anchor]
   (.stopPropagation e)
   (let [st @app
-        orig (into {} (for [s (selection-shapes (:shapes st) (:selection st))] [(:id s) (:points s)]))
+        orig (into {} (for [s (selection-shapes (:shapes st) (:selection st))]
+                        [(:id s) {:points (:points s) :holes (:holes s)}]))
         den-x (- (:x handle) (:x anchor))
         den-y (- (:y handle) (:y anchor))]
     (.setPointerCapture @canvas-el (.-pointerId e))
@@ -387,7 +593,8 @@
   (.stopPropagation e)
   (let [st @app
         w (client->world st (.-clientX e) (.-clientY e))
-        orig (into {} (for [s (selection-shapes (:shapes st) (:selection st))] [(:id s) (:points s)]))]
+        orig (into {} (for [s (selection-shapes (:shapes st) (:selection st))]
+                        [(:id s) {:points (:points s) :holes (:holes s)}]))]
     (.setPointerCapture @canvas-el (.-pointerId e))
     (history-push!)
     (swap! app assoc :drag {:kind :rotate :center center
@@ -399,24 +606,31 @@
         sx (let [v (/ (- (:x w) (:x anchor)) (if (zero? (:x den)) 1.0 (:x den)))]
              (if (< (js/Math.abs v) 0.02) (* 0.02 (if (neg? v) -1.0 1.0)) v))
         sy (let [v (/ (- (:y w) (:y anchor)) (if (zero? (:y den)) 1.0 (:y den)))]
-             (if (< (js/Math.abs v) 0.02) (* 0.02 (if (neg? v) -1.0 1.0)) v))]
+             (if (< (js/Math.abs v) 0.02) (* 0.02 (if (neg? v) -1.0 1.0)) v))
+        scale-pt (fn [p]
+                   {:x (+ (:x anchor) (* (- (:x p) (:x anchor)) sx))
+                    :y (+ (:y anchor) (* (- (:y p) (:y anchor)) sy))})]
     (swap! app update :shapes
            (fn [ss] (mapv (fn [s]
-                            (if-let [pts (get orig (:id s))]
-                              (assoc s :points (mapv (fn [p]
-                                                       {:x (+ (:x anchor) (* (- (:x p) (:x anchor)) sx))
-                                                        :y (+ (:y anchor) (* (- (:y p) (:y anchor)) sy))})
-                                                     pts))
+                            (if-let [o (get orig (:id s))]
+                              (let [pts (if (map? o) (:points o) o)
+                                    holes (when (map? o) (:holes o))]
+                                (cond-> (assoc s :points (mapv scale-pt pts))
+                                  holes (assoc :holes (mapv (fn [h] (mapv scale-pt h)) holes))))
                               s))
                           ss)))))
 
 (defn apply-rotate [w]
   (let [{:keys [center ang0 orig]} (:drag @app)
-        a (- (js/Math.atan2 (- (:y w) (:y center)) (- (:x w) (:x center))) ang0)]
+        a (- (js/Math.atan2 (- (:y w) (:y center)) (- (:x w) (:x center))) ang0)
+        rot-pt (fn [p] (rotate-pt center a p))]
     (swap! app update :shapes
            (fn [ss] (mapv (fn [s]
-                            (if-let [pts (get orig (:id s))]
-                              (assoc s :points (mapv #(rotate-pt center a %) pts))
+                            (if-let [o (get orig (:id s))]
+                              (let [pts (if (map? o) (:points o) o)
+                                    holes (when (map? o) (:holes o))]
+                                (cond-> (assoc s :points (mapv rot-pt pts))
+                                  holes (assoc :holes (mapv (fn [h] (mapv rot-pt h)) holes))))
                               s))
                           ss)))))
 
@@ -529,18 +743,28 @@
           (swap! app assoc :selection (or (:init-sel drag) #{})))))
     (swap! app assoc :drag nil :marquee nil)))
 
+(defn clear-page! []
+  (history-push!)
+  (swap! app assoc :shapes [] :selection #{} :edit-id nil))
+
 (defn start-tool [ne tool x y pid]
   (let [w (client->world @app x y)]
     (case tool
       :draw
       (do (.setPointerCapture @canvas-el pid)
-          (swap! app assoc :drawing [w]))
+          (swap! app assoc :drawing [w] :pending-fill nil))
       :eraser
       (do (.setPointerCapture @canvas-el pid)
           (swap! app (fn [a]
                        (assoc a :eraser [w]
+                              :pending-fill nil
                               :shapes (eraser-filter (:shapes a) [w] (get-in a [:viewport :zoom]))))))
-      :select (select-down ne x y)
+      :fill
+      (do (.setPointerCapture @canvas-el pid)
+          (swap! app assoc :pending-fill {:x x :y y :pid pid :start-w w :moved? false}))
+      :select
+      (do (swap! app assoc :pending-fill nil)
+          (select-down ne x y))
       nil)))
 
 (defn on-down [e]
@@ -556,14 +780,14 @@
         (or (= button 1) (= (:tool st) :pan))
         (do (.preventDefault ne)
             (.setPointerCapture @canvas-el pid)
-            (swap! app assoc :pan {:x x :y y}))
+            (swap! app assoc :pan {:x x :y y} :pending-fill nil))
 
         (= type "touch")
         (do
           (swap! active-pointers assoc pid [x y])
           (if (>= (count @active-pointers) 2)
             (do (reset! pinch (start-pinch))
-                (swap! app assoc :drawing [] :eraser [] :drag nil))
+                (swap! app assoc :drawing [] :eraser [] :drag nil :pending-fill nil))
             (start-tool ne (:tool st) x y pid)))
 
         :else
@@ -575,6 +799,11 @@
         x (.-clientX ne) y (.-clientY ne)
         pid (.-pointerId ne)
         st @app]
+    (when-let [pf (:pending-fill st)]
+      (when (= (:pid pf) pid)
+        (let [dist (js/Math.hypot (- x (:x pf)) (- y (:y pf)))]
+          (when (> dist 6)
+            (swap! app assoc-in [:pending-fill :moved?] true)))))
     (cond
       (:pan st)
       (let [{px :x py :y} (:pan st)]
@@ -583,7 +812,9 @@
                          (assoc :pan {:x x :y y})))))
 
       (and (= type "touch") (>= (count @active-pointers) 2))
-      (do (swap! active-pointers assoc pid [x y]) (apply-pinch))
+      (do (swap! active-pointers assoc pid [x y])
+          (swap! app assoc :pending-fill nil)
+          (apply-pinch))
 
       (and (= type "touch") (contains? @active-pointers pid))
       (do (swap! active-pointers assoc pid [x y])
@@ -607,16 +838,30 @@
   (let [ne (.-nativeEvent e)
         type (.-pointerType ne)
         pid (.-pointerId ne)
-        st @app]
+        st @app
+        pf (:pending-fill st)]
     (when (= type "touch")
       (swap! active-pointers dissoc pid)
       (when (< (count @active-pointers) 2) (reset! pinch nil)))
+    (when (and pf (= (:pid pf) pid))
+      (swap! app assoc :pending-fill nil)
+      (when (and (not (:moved? pf)) (nil? @pinch) (< (count @active-pointers) 2))
+        (flood-fill! (:start-w pf))))
     (cond
       (:pan st) (swap! app assoc :pan nil)
       (= (:tool st) :draw) (commit-draw!)
       (= (:tool st) :eraser) (swap! app assoc :eraser [])
       (= (:tool st) :select) (select-up)
       :else nil)))
+
+(defn on-cancel [e]
+  (let [ne (.-nativeEvent e)
+        type (.-pointerType ne)
+        pid (.-pointerId ne)]
+    (when (= type "touch")
+      (swap! active-pointers dissoc pid)
+      (when (< (count @active-pointers) 2) (reset! pinch nil)))
+    (swap! app assoc :pending-fill nil :pan nil :drawing [] :eraser [] :drag nil)))
 
 (defn add-draw-points [ne]
   (let [evs (coalesced ne)
@@ -779,9 +1024,10 @@
   (if (= 1 (count (:points s)))
     (let [p (first (:points s)) r (max 1 (/ (:stroke-width s) 2))]
       (str "<circle cx=\"" (:x p) "\" cy=\"" (:y p) "\" r=\"" r "\" fill=\"" (:stroke s) "\"/>"))
-    (str "<path d=\"" (path-d (:points s) (:is-closed s))
+    (str "<path d=\"" (shape-path-d s)
          "\" fill=\"" (if (:is-closed s) (:fill s) "none")
-         "\" stroke=\"" (:stroke s) "\" stroke-width=\"" (:stroke-width s)
+         "\" fill-rule=\"evenodd\""
+         " stroke=\"" (:stroke s) "\" stroke-width=\"" (:stroke-width s)
          "\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>")))
 
 (defn export-svg! [selection-only?]
@@ -859,8 +1105,9 @@
   (if (= 1 (count (:points s)))
     (let [p (first (:points s)) r (max 1 (/ (:stroke-width s) 2))]
       [:circle {:cx (:x p) :cy (:y p) :r r :fill (:stroke s) :pointerEvents "none"}])
-    [:path {:d (path-d (:points s) (:is-closed s))
+    [:path {:d (shape-path-d s)
             :fill (if (:is-closed s) (:fill s) "none")
+            :fillRule "evenodd"
             :stroke (:stroke s)
             :strokeWidth (:stroke-width s)
             :strokeLinecap "round"
@@ -954,7 +1201,7 @@
       :onPointerDown on-down
       :onPointerMove on-move
       :onPointerUp on-up
-      :onPointerCancel on-up
+      :onPointerCancel on-cancel
       :onDoubleClick on-dbl
       :onContextMenu (fn [e] (.preventDefault e))}
      [:rect {:x 0 :y 0 :width "100%" :height "100%" :fill bg}]
@@ -968,7 +1215,8 @@
       (for [s shapes] ^{:key (:id s)} [shape-view s])
       (when (seq drawing)
         [shape-view {:points drawing :stroke (get-in @app [:palette :color])
-                     :stroke-width (get sizes (:size @app) 3.5) :fill "none" :is-closed false}])
+                     :stroke-width (get sizes (:size @app) 3.5) :fill "none" :is-closed false
+                     :curve :bezier}])
       (when (seq eraser)
         [:polyline {:points (str/join " " (map (fn [p] (str (:x p) "," (:y p))) eraser))
                     :fill "none" :stroke "rgba(220,38,38,0.55)"
@@ -1071,6 +1319,21 @@
                             :onClick toggle-closed!}
           [:i.ti.ti-polygon]
           [:span {:style {:display "none"}} "close"]]])
+      (let [sel (:selection st)
+            sel-shapes (selection-shapes (:shapes st) sel)
+            has-sel? (seq sel-shapes)
+            is-straight? (if has-sel?
+                           (every? #(= (:curve %) :straight) sel-shapes)
+                           false)]
+        [:button.mini-btn {:class (str (when is-straight? "active ")
+                                       (when-not has-sel? "disabled"))
+                           :title (cond
+                                    (not has-sel?) "Select shapes to toggle straight/Bézier lines"
+                                    is-straight? "Straight lines (click for Bézier)"
+                                    :else "Bézier curves (click for straight)")
+                           :onClick toggle-curve!}
+         [:i.ti {:class (if is-straight? "ti-line" "ti-vector-bezier")}]
+         [:span {:style {:display "none"}} "curve"]])
       [:button.mini-btn {:title "Simplify selection (Ctrl-L)" :onClick simplify-selection!}
        [:i.ti.ti-wand]
        [:span {:style {:display "none"}} "simplify"]]]
@@ -1110,6 +1373,7 @@
     [:div.toolbar
      [tool-button :draw "ti-pencil" "Draw"]
      [tool-button :eraser "ti-eraser" "Eraser"]
+     [tool-button :fill "ti-bucket-droplet" "Flood fill"]
      [tool-button :select "ti-pointer" "Select"]
      [tool-button :pan "ti-hand-stop" "Pan" "tool-pan-btn"]
      [:div.zoom-control-wrap
@@ -1255,6 +1519,8 @@
           (= k "v") (swap! app assoc :tool :select)
           (= k "d") (swap! app assoc :tool :draw)
           (= k "e") (swap! app assoc :tool :eraser)
+          (= k "b") (swap! app assoc :tool :fill)
+          (= k "f") (swap! app assoc :tool :fill)
           (= k "h") (swap! app assoc :tool :pan)
           :else nil)))))
 
@@ -1265,7 +1531,8 @@
   (add-watch app :saver
              (fn [_ _ old new]
                (when (or (not= (:shapes old) (:shapes new))
-                         (not= (:trace old) (:trace new)))
+                         (not= (:trace old) (:trace new))
+                         (not= (:palette old) (:palette new)))
                  (schedule-save!))))
   (load-page! (:page @app))
   (refresh-pages!))

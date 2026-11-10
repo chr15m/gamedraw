@@ -40,6 +40,7 @@ html, body, #app {
 .canvas-svg.tool-pan { cursor: grab; }
 .canvas-svg.tool-draw { cursor: crosshair; }
 .canvas-svg.tool-eraser { cursor: crosshair; }
+.canvas-svg.tool-fill { cursor: crosshair; }
 
 /* Panels ------------------------------------------------------------------ */
 .top-bar {

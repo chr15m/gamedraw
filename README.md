@@ -26,7 +26,8 @@ simplify-js, idb-keyval) and has no server component.
 - Freehand drawing using `PointerEvent.getCoalescedEvents()` for high-frequency
   input, smoothed live with midpoint quadratic Bézier curves.
 - Constant-width strokes; single taps produce dots.
-- Tools: Select, Pan, Draw, Eraser.
+- Tools: Draw, Eraser, Flood fill, Select, Pan.
+- Flood fill tool creates vector path fills for enclosed interior regions, or sets the canvas background color if clicked outside or uncontained.
 - Eraser drags a trail and deletes any stroke whose segments it intersects.
 - Astroid / stylus friendly: `touch-action: none`, no zoom-jank while drawing.
 

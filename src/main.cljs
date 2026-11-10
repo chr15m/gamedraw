@@ -98,16 +98,36 @@
       (map vector pts (rest pts)))))
 
 (defn shape-bbox [s]
-  (let [pts (:points s)]
+  (when-let [pts (seq (:points s))]
     {:x1 (apply min (map :x pts)) :y1 (apply min (map :y pts))
      :x2 (apply max (map :x pts)) :y2 (apply max (map :y pts))}))
 
+(defn update-selected [shapes sel f]
+  (mapv #(if (sel (:id %)) (f %) %) shapes))
+
+(defn remove-selected [shapes sel]
+  (filterv #(not (sel (:id %))) shapes))
+
+(defn selection-shapes [shapes sel]
+  (filterv #(sel (:id %)) shapes))
+
+(defn shapes-in-box [shapes w1 w2]
+  (let [min-x (min (:x w1) (:x w2)) max-x (max (:x w1) (:x w2))
+        min-y (min (:y w1) (:y w2)) max-y (max (:y w1) (:y w2))]
+    (set (for [s shapes
+               :let [b (shape-bbox s)]
+               :when (and b
+                          (>= (:x1 b) min-x) (<= (:x2 b) max-x)
+                          (>= (:y1 b) min-y) (<= (:y2 b) max-y))]
+           (:id s)))))
+
 (defn selection-bbox [shapes sel]
-  (let [ss (filter #(contains? sel (:id %)) shapes)]
+  (let [ss (selection-shapes shapes sel)]
     (when (seq ss)
-      (let [bs (map shape-bbox ss)]
-        {:x1 (apply min (map :x1 bs)) :y1 (apply min (map :y1 bs))
-         :x2 (apply max (map :x2 bs)) :y2 (apply max (map :y2 bs))}))))
+      (let [bs (keep shape-bbox ss)]
+        (when (seq bs)
+          {:x1 (apply min (map :x1 bs)) :y1 (apply min (map :y1 bs))
+           :x2 (apply max (map :x2 bs)) :y2 (apply max (map :y2 bs))})))))
 
 (defn pt-seg-dist [p a b]
   (let [vx (- (:x b) (:x a)) vy (- (:y b) (:y a))
@@ -253,35 +273,43 @@
           (swap! app (fn [a]
                        (-> a
                            (assoc-in [:palette :color] hex)
-                           (update :shapes (fn [ss]
-                                             (mapv #(if (sel (:id %)) (assoc % :stroke hex) %) ss))))))))))
+                           (update :shapes #(update-selected % sel (fn [s] (assoc s :stroke hex)))))))))))
 
 (defn set-size! [k]
   (let [sel (:selection @app)]
     (history-push!)
     (swap! app (fn [a]
                  (-> a (assoc :size k)
-                     (update :shapes (fn [ss]
-                                       (mapv #(if (sel (:id %)) (assoc % :stroke-width (sizes k)) %) ss))))))))
+                     (update :shapes #(update-selected % sel (fn [s] (assoc s :stroke-width (sizes k))))))))))
+
+(defn selection-fill-status [shapes sel default-fill]
+  (let [sel-shapes (selection-shapes shapes sel)
+        has-sel? (seq sel-shapes)
+        is-closed? (if has-sel?
+                     (boolean (some :is-closed sel-shapes))
+                     false)
+        is-filled? (if has-sel?
+                     (boolean (and is-closed?
+                                   (some #(and (:is-closed %) (not= (:fill %) "none") (some? (:fill %))) sel-shapes)))
+                     (= default-fill "solid"))]
+    {:has-sel? has-sel?
+     :is-closed? is-closed?
+     :is-filled? is-filled?}))
 
 (defn toggle-fill! []
-  (let [sel (:selection @app)
-        ss (:shapes @app)
-        currently-filled? (if (seq sel)
-                            (some #(and (sel (:id %)) (:is-closed %) (not= (:fill %) "none") (some? (:fill %))) ss)
-                            (= (:fill @app) "solid"))
-        nf (if currently-filled? "none" "solid")]
+  (let [st @app
+        {:keys [is-filled?]} (selection-fill-status (:shapes st) (:selection st) (:fill st))
+        nf (if is-filled? "none" "solid")]
     (history-push!)
     (swap! app (fn [a]
                  (-> a (assoc :fill nf)
-                     (update :shapes (fn [shapes]
-                                       (mapv (fn [s]
-                                               (if (sel (:id s))
-                                                 (if (= nf "solid")
-                                                   (assoc s :is-closed true :fill (:stroke s))
-                                                   (assoc s :fill "none"))
-                                                 s))
-                                             shapes))))))))
+                     (update :shapes
+                             (fn [shapes]
+                               (update-selected shapes (:selection a)
+                                                (fn [s]
+                                                  (if (= nf "solid")
+                                                    (assoc s :is-closed true :fill (:stroke s))
+                                                    (assoc s :fill "none")))))))))))
 
 (defn toggle-closed! []
   (let [sel (:selection @app)]
@@ -291,12 +319,10 @@
                    (let [ss (:shapes a)
                          currently-closed? (some #(and (sel (:id %)) (:is-closed %)) ss)
                          new-closed? (not currently-closed?)
-                         new-shapes (mapv (fn [s]
-                                            (if (sel (:id s))
-                                              (assoc s :is-closed new-closed?
-                                                       :fill (if new-closed? (:fill s "none") "none"))
-                                              s))
-                                          ss)
+                         new-shapes (update-selected ss sel
+                                                     (fn [s]
+                                                       (assoc s :is-closed new-closed?
+                                                              :fill (if new-closed? (:fill s "none") "none"))))
                          new-fill (if (and new-closed? (some #(and (sel (:id %)) (not= (:fill %) "none")) new-shapes))
                                     "solid" "none")]
                      (-> a
@@ -315,13 +341,13 @@
   (let [sel (:selection @app)]
     (when (seq sel)
       (history-push!)
-      (swap! app update :shapes (fn [ss] (mapv #(if (sel (:id %)) (simplify-shape %) %) ss))))))
+      (swap! app update :shapes #(update-selected % sel simplify-shape)))))
 
 (defn duplicate! []
   (let [st @app sel (:selection st)]
     (when (seq sel)
       (history-push!)
-      (let [clones (mapv (fn [s] (assoc s :id (gen-id))) (filter #(sel (:id %)) (:shapes st)))]
+      (let [clones (mapv (fn [s] (assoc s :id (gen-id))) (selection-shapes (:shapes st) sel))]
         (swap! app (fn [a] (-> a
                                (update :shapes into clones)
                                (assoc :selection (set (map :id clones))))))))))
@@ -331,7 +357,7 @@
     (when (seq sel)
       (history-push!)
       (swap! app (fn [a] (-> a
-                             (update :shapes (fn [ss] (filterv #(not (sel (:id %))) ss)))
+                             (update :shapes #(remove-selected % sel))
                              (assoc :selection #{} :edit-id nil)))))))
 
 (defn clear-page! []
@@ -347,7 +373,7 @@
 (defn begin-scale [e handle anchor]
   (.stopPropagation e)
   (let [st @app
-        orig (into {} (for [s (:shapes st) :when (contains? (:selection st) (:id s))] [(:id s) (:points s)]))
+        orig (into {} (for [s (selection-shapes (:shapes st) (:selection st))] [(:id s) (:points s)]))
         den-x (- (:x handle) (:x anchor))
         den-y (- (:y handle) (:y anchor))]
     (.setPointerCapture @canvas-el (.-pointerId e))
@@ -361,7 +387,7 @@
   (.stopPropagation e)
   (let [st @app
         w (client->world st (.-clientX e) (.-clientY e))
-        orig (into {} (for [s (:shapes st) :when (contains? (:selection st) (:id s))] [(:id s) (:points s)]))]
+        orig (into {} (for [s (selection-shapes (:shapes st) (:selection st))] [(:id s) (:points s)]))]
     (.setPointerCapture @canvas-el (.-pointerId e))
     (history-push!)
     (swap! app assoc :drag {:kind :rotate :center center
@@ -458,11 +484,7 @@
         (if (> dist 4)
           (let [w1 (client->world st (min sx x) (min sy y))
                 w2 (client->world st (max sx x) (max sy y))
-                ids (set (for [s (:shapes st)
-                               :when (let [b (shape-bbox s)]
-                                       (and (>= (:x1 b) (:x w1)) (<= (:x2 b) (:x w2))
-                                            (>= (:y1 b) (:y w1)) (<= (:y2 b) (:y w2))))]
-                           (:id s)))
+                ids (shapes-in-box (:shapes st) w1 w2)
                 sel (into (or (:init-sel drag) #{}) ids)]
             (swap! app (fn [a]
                          (-> a
@@ -502,11 +524,7 @@
         (if (> dist 4)
           (let [w1 (client->world st (min sx cx) (min sy cy))
                 w2 (client->world st (max sx cx) (max sy cy))
-                ids (set (for [s (:shapes st)
-                               :when (let [b (shape-bbox s)]
-                                       (and (>= (:x1 b) (:x w1)) (<= (:x2 b) (:x w2))
-                                            (>= (:y1 b) (:y w1)) (<= (:y2 b) (:y w2))))]
-                           (:id s)))]
+                ids (shapes-in-box (:shapes st) w1 w2)]
             (swap! app assoc :selection (into (or (:init-sel drag) #{}) ids)))
           (swap! app assoc :selection (or (:init-sel drag) #{})))))
     (swap! app assoc :drag nil :marquee nil)))
@@ -533,22 +551,23 @@
         pid (.-pointerId ne)
         st @app]
     (when (= type "touch") (.preventDefault ne))
-    (cond
-      (or (= button 1) (= (:tool st) :pan))
-      (do (.preventDefault ne)
-          (.setPointerCapture @canvas-el pid)
-          (swap! app assoc :pan {:x x :y y}))
+    (when (or (= type "touch") (= button 0) (= button 1))
+      (cond
+        (or (= button 1) (= (:tool st) :pan))
+        (do (.preventDefault ne)
+            (.setPointerCapture @canvas-el pid)
+            (swap! app assoc :pan {:x x :y y}))
 
-      (= type "touch")
-      (do
-        (swap! active-pointers assoc pid [x y])
-        (if (>= (count @active-pointers) 2)
-          (do (reset! pinch (start-pinch))
-              (swap! app assoc :drawing [] :eraser [] :drag nil))
-          (start-tool ne (:tool st) x y pid)))
+        (= type "touch")
+        (do
+          (swap! active-pointers assoc pid [x y])
+          (if (>= (count @active-pointers) 2)
+            (do (reset! pinch (start-pinch))
+                (swap! app assoc :drawing [] :eraser [] :drag nil))
+            (start-tool ne (:tool st) x y pid)))
 
-      :else
-      (start-tool ne (:tool st) x y pid))))
+        :else
+        (start-tool ne (:tool st) x y pid)))))
 
 (defn on-move [e]
   (let [ne (.-nativeEvent e)
@@ -600,17 +619,17 @@
       :else nil)))
 
 (defn add-draw-points [ne]
-  (let [evs (coalesced ne)]
+  (let [evs (coalesced ne)
+        st @app
+        new-pts (mapv #(client->world st (.-clientX %) (.-clientY %)) evs)]
     (swap! app update :drawing
            (fn [pts]
-             (reduce (fn [acc ev]
-                       (let [st @app
-                             w (client->world st (.-clientX ev) (.-clientY ev))]
-                         (if (and (seq acc)
-                                  (< (js/Math.hypot (- (:x w) (:x (peek acc))) (- (:y w) (:y (peek acc)))) 0.6))
-                           acc
-                           (conj acc w))))
-                     pts evs)))))
+             (reduce (fn [acc w]
+                       (if (and (seq acc)
+                                (< (js/Math.hypot (- (:x w) (:x (peek acc))) (- (:y w) (:y (peek acc)))) 0.6))
+                         acc
+                         (conj acc w)))
+                     pts new-pts)))))
 
 (defn on-dbl [e]
   (let [ne (.-nativeEvent e)
@@ -761,7 +780,7 @@
 (defn export-svg! [selection-only?]
   (let [st @app
         ss (if (and selection-only? (seq (:selection st)))
-             (filterv #(contains? (:selection st) (:id %)) (:shapes st))
+             (selection-shapes (:shapes st) (:selection st))
              (:shapes st))
         b (when (seq ss)
             (let [bs (map shape-bbox ss)]
@@ -844,7 +863,7 @@
 (defn selection-overlay []
   (let [st @app
         sel (:selection st)
-        sel-shapes (filterv #(contains? sel (:id %)) (:shapes st))
+        sel-shapes (selection-shapes (:shapes st) sel)
         b (selection-bbox (:shapes st) sel)]
     (when (and b (seq sel-shapes))
       (let [s1 (world->screen st {:x (:x1 b) :y (:y1 b)})
@@ -989,50 +1008,11 @@
         (when (= (:page @app) old-n)
           (swap! app assoc :page new-n))))))
 
-(defonce editing-page-name (r/atom nil))
-(defonce editing-page-val (r/atom ""))
-
-(defn commit-page-rename! [old-p]
-  (let [new-p (str/trim (str @editing-page-val))]
-    (reset! editing-page-name nil)
-    (when (and (seq new-p) (not= old-p new-p))
-      (rename-page! old-p new-p))))
-
 (defn switch-page! [new-page]
   (let [p (str/trim (str new-page))]
     (when (and (seq p) (not= p (:page @app)))
       (save-page!)
       (load-page! p))))
-
-(defonce page-input-val (r/atom nil))
-
-(defn page-name-input []
-  (let [cur-page (:page @app)
-        val (or @page-input-val cur-page)]
-    [:input.page-input
-     {:type "text"
-      :placeholder "Page name"
-      :value val
-      :ref (fn [el]
-             (when el
-               (set! (.-onchange el)
-                     (fn [e]
-                       (let [v (.. e -target -value)]
-                         (reset! page-input-val nil)
-                         (switch-page! v))))))
-      :onChange (fn [e]
-                  (let [v (.. e -target -value)]
-                    (reset! page-input-val v)))
-      :onBlur (fn [e]
-                (let [v (.. e -target -value)]
-                  (reset! page-input-val nil)
-                  (switch-page! v)))
-      :onKeyDown (fn [e]
-                   (when (= (.-key e) "Enter")
-                     (let [v (.. e -target -value)]
-                       (reset! page-input-val nil)
-                       (switch-page! v)
-                       (.blur (.-target e)))))}]))
 
 (defn toggle-menu! []
   (let [opening? (not (:menu-open @app))]
@@ -1076,15 +1056,7 @@
       (for [c (:colors pal)] ^{:key c} [swatch c])]
      [:div.style-row
       (let [sel (:selection st)
-            selected-shapes (filter #(contains? sel (:id %)) (:shapes st))
-            has-sel? (seq selected-shapes)
-            is-closed? (if has-sel?
-                         (boolean (some :is-closed selected-shapes))
-                         false)
-            is-filled? (if has-sel?
-                         (boolean (and is-closed?
-                                       (some #(and (:is-closed %) (not= (:fill %) "none") (some? (:fill %))) selected-shapes)))
-                         (= (:fill st) "solid"))]
+            {:keys [has-sel? is-closed? is-filled?]} (selection-fill-status (:shapes st) sel (:fill st))]
         [:<>
          [:button.mini-btn {:class (str (when is-filled? "active ") (when (and has-sel? (not is-closed?)) "disabled"))
                             :title (if (and has-sel? (not is-closed?)) "Close shape to fill" "Toggle fill of selection")
@@ -1181,59 +1153,67 @@
      [palette-toggle]]))
 
 (defn hamburger-menu []
-  (let [close! #(swap! app assoc :menu-open false)
-        cur-page (:page @app)
-        pages @all-pages]
-    [:div.hamburger-menu
-     [:button.menu-item {:onClick (fn [] (close!) (clear-page!))}
-      [:i.ti.ti-eraser] "Clear canvas"]
-     [:button.menu-item {:title "Export SVG" :onClick (fn [] (close!) (export-svg! false))}
-      [:i.ti.ti-download] "Export SVG"]
-     [:button.menu-item {:title "Export selection" :onClick (fn [] (close!) (export-svg! true))}
-      [:i.ti.ti-file-export] "Export selection"]
-     [:div.menu-divider]
-     [:div.menu-section-header
-      [:span.menu-section-title "Pages"]
-      [:button.menu-section-action
-       {:title "New page"
-        :onClick (fn []
-                   (close!)
-                   (let [new-name (str "page-" (inc (count pages)))]
-                     (switch-page! new-name)))}
-       [:i.ti.ti-plus]]]
-     [:div.menu-pages-list
-      (for [p pages]
-        ^{:key p}
-        (if (= @editing-page-name p)
-          [:div.page-item-row.editing
-           [:input.page-input.page-item-input
-            {:type "text"
-             :autoFocus true
-             :value @editing-page-val
-             :ref (fn [el] (when el (.focus el)))
-             :onChange #(reset! editing-page-val (.. % -target -value))
-             :onBlur #(commit-page-rename! p)
-             :onKeyDown (fn [e]
-                          (case (.-key e)
-                            "Enter" (commit-page-rename! p)
-                            "Escape" (reset! editing-page-name nil)
-                            nil))}]]
-          [:div.page-item-row {:class (when (= p cur-page) "active")}
-           [:button.page-item-select
-            {:title (str "Switch to " p)
-             :onClick (fn []
-                        (close!)
-                        (when (not= p cur-page)
-                          (switch-page! p)))}
-            [:i.ti {:class (if (= p cur-page) "ti-file-check" "ti-file")}]
-            [:span.page-item-name p]]
-           [:button.page-edit-btn
-            {:title "Edit page name"
-             :onClick (fn [e]
-                        (.stopPropagation e)
-                        (reset! editing-page-name p)
-                        (reset! editing-page-val p))}
-            [:i.ti.ti-pencil]]]))]]))
+  (let [editing-page-name (r/atom nil)
+        editing-page-val (r/atom "")]
+    (fn []
+      (let [close! #(swap! app assoc :menu-open false)
+            cur-page (:page @app)
+            pages @all-pages
+            commit-rename! (fn [old-p]
+                             (let [new-p (str/trim (str @editing-page-val))]
+                               (reset! editing-page-name nil)
+                               (when (and (seq new-p) (not= old-p new-p))
+                                 (rename-page! old-p new-p))))]
+        [:div.hamburger-menu
+         [:button.menu-item {:onClick (fn [] (close!) (clear-page!))}
+          [:i.ti.ti-eraser] "Clear canvas"]
+         [:button.menu-item {:title "Export SVG" :onClick (fn [] (close!) (export-svg! false))}
+          [:i.ti.ti-download] "Export SVG"]
+         [:button.menu-item {:title "Export selection" :onClick (fn [] (close!) (export-svg! true))}
+          [:i.ti.ti-file-export] "Export selection"]
+         [:div.menu-divider]
+         [:div.menu-section-header
+          [:span.menu-section-title "Pages"]
+          [:button.menu-section-action
+           {:title "New page"
+            :onClick (fn []
+                       (close!)
+                       (let [new-name (str "page-" (inc (count pages)))]
+                         (switch-page! new-name)))}
+           [:i.ti.ti-plus]]]
+         [:div.menu-pages-list
+          (for [p pages]
+            ^{:key p}
+            (if (= @editing-page-name p)
+              [:div.page-item-row.editing
+               [:input.page-input.page-item-input
+                {:type "text"
+                 :autoFocus true
+                 :value @editing-page-val
+                 :ref (fn [el] (when el (.focus el)))
+                 :onChange #(reset! editing-page-val (.. % -target -value))
+                 :onBlur #(commit-rename! p)
+                 :onKeyDown (fn [e]
+                              (case (.-key e)
+                                "Enter" (commit-rename! p)
+                                "Escape" (reset! editing-page-name nil)
+                                nil))}]]
+              [:div.page-item-row {:class (when (= p cur-page) "active")}
+               [:button.page-item-select
+                {:title (str "Switch to " p)
+                 :onClick (fn []
+                            (close!)
+                            (when (not= p cur-page)
+                              (switch-page! p)))}
+                [:i.ti {:class (if (= p cur-page) "ti-file-check" "ti-file")}]
+                [:span.page-item-name p]]
+               [:button.page-edit-btn
+                {:title "Edit page name"
+                 :onClick (fn [e]
+                            (.stopPropagation e)
+                            (reset! editing-page-name p)
+                            (reset! editing-page-val p))}
+                [:i.ti.ti-pencil]]]))]]))))
 
 (defn root []
   [:div.app-root

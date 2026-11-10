@@ -2,11 +2,6 @@
 
 ## TODO
 
-- [x] Move delete/duplicate buttons under a vertical dots icon that pops up.
-
-- [x] Put undo and redo into the bottom toolbar just to the right of the magnifying glass.
-- [x] Put delete/duplicate actions from top bar to bottom, to the left of undo/redo.
-
 - [ ] Threshold pinch to zoom so two finger dragging doesn't trigger it so easily.
 
 ## Next
@@ -18,6 +13,10 @@
 - [ ] Organize pages into projects (project-level grouping or snapshots)
 
 ## Done
+
+- [x] Move delete/duplicate buttons under a vertical dots icon that pops up.
+- [x] Put undo and redo into the bottom toolbar just to the right of the magnifying glass.
+- [x] Put delete/duplicate actions from top bar to bottom, to the left of undo/redo.
 
 - [x] Hide the 'hand' to move on mobile.
 - [x] Put the undo/redo/delete/duplicate icons on one line together below the page name.

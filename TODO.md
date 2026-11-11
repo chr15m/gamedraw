@@ -2,9 +2,14 @@
 
 ## TODO
 
-- [ ] Shape z-order editing (back/forward, send-to-back/front) UI.
-- [ ] Make it home-screen installable (ref `single-file-pwa.html`).
 - [ ] Fixing the UI to accomodate multiple tools.
+  - [ ] Put pan, zoom, undo, redo, and palette into a separate toolbar pill on the RHS.
+  - [ ] Put pan and zoom together into a pop-up pill.
+  - [ ] Left align the other toolbar with draw, erase, fill, select.
+  - [ ] Put delete, duplicate, and z-order in new contextual toolbar.
+        which appears just above the current one when shapes are selected.
+- [ ] Make it home-screen installable (ref `single-file-pwa.html`).
+- [ ] Shape z-order editing (back/forward, send-to-back/front) UI.
 
 ## Next / Later
 

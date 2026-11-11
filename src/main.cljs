@@ -699,7 +699,9 @@
                      (if (and hit-idx (< hit-idx (count ss)))
                        (let [idx (inc hit-idx)]
                          (vec (concat (subvec ss 0 idx) [new-shape] (subvec ss idx))))
-                       (into [new-shape] ss)))))
+                       (let [overlap-idx (or (first (keep-indexed (fn [i s] (when (shapes-overlap? new-shape s) i)) ss))
+                                             0)]
+                         (vec (concat (subvec ss 0 overlap-idx) [new-shape] (subvec ss overlap-idx))))))))
 
           :else nil)))))
 

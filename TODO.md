@@ -15,6 +15,7 @@
 
 ## Done
 
+- [x] Forward/back in stack should only consider touching shapes.
 - [x] Why is the flood fill implementation in index.html?
 - [x] Make it home-screen installable (ref `single-file-pwa.html`).
 - [x] Fixing the UI to accomodate multiple tools.

@@ -130,6 +130,29 @@
     {:x1 (apply min (map :x pts)) :y1 (apply min (map :y pts))
      :x2 (apply max (map :x pts)) :y2 (apply max (map :y pts))}))
 
+(defn shape-stroke-bbox [s]
+  (when-let [pts (seq (:points s))]
+    (let [hw (/ (or (:stroke-width s) 3.5) 2.0)]
+      {:x1 (- (apply min (map :x pts)) hw)
+       :y1 (- (apply min (map :y pts)) hw)
+       :x2 (+ (apply max (map :x pts)) hw)
+       :y2 (+ (apply max (map :y pts)) hw)})))
+
+(defn shape-effective-bbox [s]
+  (if (and (:stroke s) (not= (:stroke s) "none") (not= (:stroke s) "transparent"))
+    (shape-stroke-bbox s)
+    (shape-bbox s)))
+
+(defn bboxes-overlap? [b1 b2]
+  (and b1 b2
+       (<= (:x1 b1) (:x2 b2))
+       (>= (:x2 b1) (:x1 b2))
+       (<= (:y1 b1) (:y2 b2))
+       (>= (:y2 b1) (:y1 b2))))
+
+(defn shapes-overlap? [s1 s2]
+  (bboxes-overlap? (shape-effective-bbox s1) (shape-effective-bbox s2)))
+
 (defn update-selected [shapes sel f]
   (mapv #(if (sel (:id %)) (f %) %) shapes))
 
@@ -432,31 +455,54 @@
   (let [{selected true unselected false} (group-by #(boolean (sel (:id %))) shapes)]
     (vec (concat (or unselected []) (or selected [])))))
 
+(defn move-after [v from-idx to-idx]
+  (vec (concat (subvec v 0 from-idx)
+               (subvec v (inc from-idx) (inc to-idx))
+               [(nth v from-idx)]
+               (subvec v (inc to-idx)))))
+
+(defn move-before [v from-idx to-idx]
+  (vec (concat (subvec v 0 to-idx)
+               [(nth v from-idx)]
+               (subvec v to-idx from-idx)
+               (subvec v (inc from-idx)))))
+
 (defn send-backward-shapes [shapes sel]
-  (let [n (count shapes)
-        arr (into-array shapes)]
-    (loop [i 1]
-      (when (< i n)
-        (let [cur (aget arr i)
-              prev (aget arr (dec i))]
-          (when (and (sel (:id cur)) (not (sel (:id prev))))
-            (aset arr i prev)
-            (aset arr (dec i) cur)))
-        (recur (inc i))))
-    (vec (array-seq arr))))
+  (let [sel-indices (keep-indexed (fn [i s] (when (sel (:id s)) i)) shapes)]
+    (reduce
+     (fn [cur-shapes from-idx]
+       (let [cur-shape (nth cur-shapes from-idx)
+             to-idx (loop [k (dec from-idx)]
+                      (when (>= k 0)
+                        (let [other (nth cur-shapes k)]
+                          (cond
+                            (sel (:id other)) nil
+                            (shapes-overlap? cur-shape other) k
+                            :else (recur (dec k))))))]
+         (if to-idx
+           (move-before cur-shapes from-idx to-idx)
+           cur-shapes)))
+     shapes
+     sel-indices)))
 
 (defn bring-forward-shapes [shapes sel]
-  (let [n (count shapes)
-        arr (into-array shapes)]
-    (loop [i (- n 2)]
-      (when (>= i 0)
-        (let [cur (aget arr i)
-              nxt (aget arr (inc i))]
-          (when (and (sel (:id cur)) (not (sel (:id nxt))))
-            (aset arr i nxt)
-            (aset arr (inc i) cur)))
-        (recur (dec i))))
-    (vec (array-seq arr))))
+  (let [sel-indices (reverse (keep-indexed (fn [i s] (when (sel (:id s)) i)) shapes))]
+    (reduce
+     (fn [cur-shapes from-idx]
+       (let [cur-shape (nth cur-shapes from-idx)
+             n (count cur-shapes)
+             to-idx (loop [k (inc from-idx)]
+                      (when (< k n)
+                        (let [other (nth cur-shapes k)]
+                          (cond
+                            (sel (:id other)) nil
+                            (shapes-overlap? cur-shape other) k
+                            :else (recur (inc k))))))]
+         (if to-idx
+           (move-after cur-shapes from-idx to-idx)
+           cur-shapes)))
+     shapes
+     sel-indices)))
 
 (defn send-to-back! []
   (let [sel (:selection @app)]
@@ -482,20 +528,8 @@
       (history-push!)
       (swap! app update :shapes #(bring-to-front-shapes % sel)))))
 
-(defn shape-stroke-bbox [s]
-  (when-let [pts (seq (:points s))]
-    (let [hw (/ (or (:stroke-width s) 3.5) 2.0)]
-      {:x1 (- (apply min (map :x pts)) hw)
-       :y1 (- (apply min (map :y pts)) hw)
-       :x2 (+ (apply max (map :x pts)) hw)
-       :y2 (+ (apply max (map :y pts)) hw)})))
-
 (defn shapes-overall-bbox [shapes]
-  (let [bs (keep (fn [s]
-                   (if (and (:stroke s) (not= (:stroke s) "none") (not= (:stroke s) "transparent"))
-                     (shape-stroke-bbox s)
-                     (shape-bbox s)))
-                 shapes)]
+  (let [bs (keep shape-effective-bbox shapes)]
     (when (seq bs)
       {:x1 (apply min (map :x1 bs))
        :y1 (apply min (map :y1 bs))

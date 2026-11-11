@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>SketchThing</title>
   <script>
-    (function () {
+    (async function () {
       const logoSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><rect width="24" height="24" fill="#171819"/><path d="M4 15c2 -4.97 7.356 -11 9 -11c4.25 0 -5.5 11.958 -3 13s5.65 -6.678 7.4 -5.902c1.75 .777 -1.05 7.589 -.3 8.63s3.15 -.897 3.9 -2.728" fill="none" stroke="#E8E8E8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
       const iconDataUrl = 'data:image/svg+xml;base64,' + btoa(logoSvg);
       const iconLink = document.createElement('link');
@@ -17,6 +17,62 @@
       iconLink.type = 'image/svg+xml';
       iconLink.href = iconDataUrl;
       document.head.appendChild(iconLink);
+
+      function svgToPng(svgDataUrl, size) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = function () {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#171819';
+            ctx.fillRect(0, 0, size, size);
+            ctx.drawImage(img, 0, 0, size, size);
+            resolve(canvas.toDataURL('image/png'));
+          };
+          img.onerror = reject;
+          img.src = svgDataUrl;
+        });
+      }
+
+      const iconSize = 192;
+      const pngDataUrl = await svgToPng(iconDataUrl, iconSize);
+
+      const appleIconLink = document.createElement('link');
+      appleIconLink.rel = 'apple-touch-icon';
+      appleIconLink.type = 'image/png';
+      appleIconLink.href = pngDataUrl;
+      document.head.appendChild(appleIconLink);
+
+      const manifest = {
+        name: "SketchThing",
+        short_name: "SketchThing",
+        description: "Vector drawing and sketching web app.",
+        display: "standalone",
+        start_url: window.location.href,
+        background_color: "#171819",
+        theme_color: "#171819",
+        icons: [
+          {
+            src: pngDataUrl,
+            sizes: `${iconSize}x${iconSize}`,
+            type: "image/png"
+          }
+        ]
+      };
+      const manifestLink = document.createElement('link');
+      manifestLink.rel = 'manifest';
+      manifestLink.href = 'data:application/json;base64,' + btoa(JSON.stringify(manifest));
+      document.head.appendChild(manifestLink);
+
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('sw.js').catch(function (err) {
+            console.error('Service worker registration failed:', err);
+          });
+        });
+      }
     })();
   </script>
   <link rel="stylesheet" href="style.css">

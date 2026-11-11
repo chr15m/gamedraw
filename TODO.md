@@ -2,9 +2,6 @@
 
 ## TODO
 
-- [ ] Why is the flood fill implementation in index.html?
-- [ ] Make it home-screen installable (ref `single-file-pwa.html`).
-
 ## Next / Later
 
 - [ ] sync to nostr
@@ -18,6 +15,8 @@
 
 ## Done
 
+- [x] Why is the flood fill implementation in index.html?
+- [x] Make it home-screen installable (ref `single-file-pwa.html`).
 - [x] Fixing the UI to accomodate multiple tools.
   - [x] Put pan, zoom, undo, redo, and palette into a separate toolbar pill on the RHS.
   - [x] Put pan and zoom together into a pop-up pill.

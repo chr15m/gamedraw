@@ -46,7 +46,6 @@
     :palette-open false
     :menu-open false
     :zoom-open false
-    :actions-open false
     :size "m"
     :fill "none"
     :curve :bezier
@@ -424,6 +423,64 @@
       (swap! app (fn [a] (-> a
                              (update :shapes #(remove-selected % sel))
                              (assoc :selection #{} :edit-id nil)))))))
+
+(defn send-to-back-shapes [shapes sel]
+  (let [{selected true unselected false} (group-by #(boolean (sel (:id %))) shapes)]
+    (vec (concat (or selected []) (or unselected [])))))
+
+(defn bring-to-front-shapes [shapes sel]
+  (let [{selected true unselected false} (group-by #(boolean (sel (:id %))) shapes)]
+    (vec (concat (or unselected []) (or selected [])))))
+
+(defn send-backward-shapes [shapes sel]
+  (let [n (count shapes)
+        arr (into-array shapes)]
+    (loop [i 1]
+      (when (< i n)
+        (let [cur (aget arr i)
+              prev (aget arr (dec i))]
+          (when (and (sel (:id cur)) (not (sel (:id prev))))
+            (aset arr i prev)
+            (aset arr (dec i) cur)))
+        (recur (inc i))))
+    (vec (array-seq arr))))
+
+(defn bring-forward-shapes [shapes sel]
+  (let [n (count shapes)
+        arr (into-array shapes)]
+    (loop [i (- n 2)]
+      (when (>= i 0)
+        (let [cur (aget arr i)
+              nxt (aget arr (inc i))]
+          (when (and (sel (:id cur)) (not (sel (:id nxt))))
+            (aset arr i nxt)
+            (aset arr (inc i) cur)))
+        (recur (dec i))))
+    (vec (array-seq arr))))
+
+(defn send-to-back! []
+  (let [sel (:selection @app)]
+    (when (seq sel)
+      (history-push!)
+      (swap! app update :shapes #(send-to-back-shapes % sel)))))
+
+(defn send-backward! []
+  (let [sel (:selection @app)]
+    (when (seq sel)
+      (history-push!)
+      (swap! app update :shapes #(send-backward-shapes % sel)))))
+
+(defn bring-forward! []
+  (let [sel (:selection @app)]
+    (when (seq sel)
+      (history-push!)
+      (swap! app update :shapes #(bring-forward-shapes % sel)))))
+
+(defn bring-to-front! []
+  (let [sel (:selection @app)]
+    (when (seq sel)
+      (history-push!)
+      (swap! app update :shapes #(bring-to-front-shapes % sel)))))
 
 (defn shape-stroke-bbox [s]
   (when-let [pts (seq (:points s))]
@@ -1408,55 +1465,70 @@
      [:i.ti.ti-palette]
      [:span.palette-chip {:style {:background col}}]]))
 
-(defn toolbar []
+(defn contextual-toolbar []
+  (let [st @app
+        sel (:selection st)]
+    (when (and (seq sel) (nil? (:edit-id st)))
+      [:div.contextual-toolbar
+       [:button.icon-btn {:title "Delete (Del)"
+                          :onClick delete-selection!}
+        [:i.ti.ti-trash]]
+       [:button.icon-btn {:title "Duplicate (Ctrl-D)"
+                          :onClick duplicate!}
+        [:i.ti.ti-copy]]
+       [:div.toolbar-divider]
+       [:button.icon-btn {:title "Send to back (Shift-[)"
+                          :onClick send-to-back!}
+        [:i.ti.ti-stack-back]]
+       [:button.icon-btn {:title "Send backward ([)"
+                          :onClick send-backward!}
+        [:i.ti.ti-stack-backward]]
+       [:button.icon-btn {:title "Bring forward (])"
+                          :onClick bring-forward!}
+        [:i.ti.ti-stack-forward]]
+       [:button.icon-btn {:title "Bring to front (Shift-])"
+                          :onClick bring-to-front!}
+        [:i.ti.ti-stack-front]]])))
+
+(defn tools-toolbar []
+  [:div.toolbar.tools-toolbar
+   [tool-button :draw "ti-pencil" "Draw"]
+   [tool-button :eraser "ti-eraser" "Eraser"]
+   [tool-button :fill "ti-bucket-droplet" "Flood fill"]
+   [tool-button :select "ti-pointer" "Select"]])
+
+(defn rhs-toolbar []
   (let [st @app
         zoom-open? (:zoom-open st)
-        actions-open? (:actions-open st)
         zoom-pct (str (js/Math.round (* 100 (get-in st [:viewport :zoom]))) "%")]
-    [:div.toolbar
-     [tool-button :draw "ti-pencil" "Draw"]
-     [tool-button :eraser "ti-eraser" "Eraser"]
-     [tool-button :fill "ti-bucket-droplet" "Flood fill"]
-     [tool-button :select "ti-pointer" "Select"]
-     [tool-button :pan "ti-hand-stop" "Pan" "tool-pan-btn"]
-     [:div.zoom-control-wrap
-      (when zoom-open?
-        [:div.zoom-backdrop {:onClick #(swap! app assoc :zoom-open false)}])
-      [:button.icon-btn.zoom-toggle-btn
-       {:class (when zoom-open? "active")
-        :title (str "Zoom (" zoom-pct ")")
-        :onClick #(swap! app update :zoom-open not)}
-       [:i.ti.ti-search]]
-      (when zoom-open?
-        [:div.zoom-popout
-         [:button.icon-btn {:title "Zoom out" :onClick #(zoom-by (/ 1 1.25) (/ (.-innerWidth js/window) 2) (/ (.-innerHeight js/window) 2))}
-          [:i.ti.ti-zoom-out]]
-         [:button.zoom-label-btn {:title "Reset zoom (100%)" :onClick reset-zoom}
-          zoom-pct]
-         [:button.icon-btn {:title "Zoom in" :onClick #(zoom-by 1.25 (/ (.-innerWidth js/window) 2) (/ (.-innerHeight js/window) 2))}
-          [:i.ti.ti-zoom-in]]
-         [:button.icon-btn {:title "Reset zoom (100%)" :onClick reset-zoom}
-          [:i.ti.ti-zoom-reset]]])]
-     [:div.actions-control-wrap
-      (when actions-open?
-        [:div.actions-backdrop {:onClick #(swap! app assoc :actions-open false)}])
-      [:button.icon-btn.actions-toggle-btn
-       {:class (when actions-open? "active")
-        :title "More actions"
-        :onClick #(swap! app update :actions-open not)}
-       [:i.ti.ti-dots-vertical]]
-      (when actions-open?
-        [:div.actions-popout
-         [:button.icon-btn {:title "Delete (Del)"
-                            :onClick (fn []
-                                       (swap! app assoc :actions-open false)
-                                       (delete-selection!))}
-          [:i.ti.ti-trash]]
-         [:button.icon-btn {:title "Duplicate (Ctrl-D)"
-                            :onClick (fn []
-                                       (swap! app assoc :actions-open false)
-                                       (duplicate!))}
-          [:i.ti.ti-copy]]])]
+    [:div.toolbar.rhs-toolbar
+     (when zoom-open?
+       [:div.zoom-backdrop {:onClick #(swap! app assoc :zoom-open false)}])
+     (when zoom-open?
+       [:div.zoom-popout
+        [:button.icon-btn.tool-pan-btn
+         {:class (when (= (:tool st) :pan) "active")
+          :title "Pan"
+          :onClick (fn []
+                     (swap! app assoc :tool :pan :drawing [] :eraser [])
+                     (swap! app assoc :zoom-open false))}
+         [:i.ti.ti-hand-stop]]
+        [:button.icon-btn {:title "Zoom out" :onClick #(zoom-by (/ 1 1.25) (/ (.-innerWidth js/window) 2) (/ (.-innerHeight js/window) 2))}
+         [:i.ti.ti-zoom-out]]
+        [:button.zoom-label-btn {:title "Reset zoom (100%)" :onClick reset-zoom}
+         zoom-pct]
+        [:button.icon-btn {:title "Zoom in" :onClick #(zoom-by 1.25 (/ (.-innerWidth js/window) 2) (/ (.-innerHeight js/window) 2))}
+         [:i.ti.ti-zoom-in]]
+        [:button.icon-btn {:title "Reset zoom (100%)" :onClick reset-zoom}
+         [:i.ti.ti-zoom-reset]]])
+     [:button.icon-btn.zoom-toggle-btn
+      {:class (str (when zoom-open? "active ")
+                   (when (= (:tool st) :pan) "active active-tool tool-btn "))
+       :title (if (= (:tool st) :pan)
+                "Pan"
+                (str "Zoom & Pan (" zoom-pct ")"))
+       :onClick #(swap! app update :zoom-open not)}
+      [:i.ti {:class (if (= (:tool st) :pan) "ti-hand-stop" "ti-search")}]]
      [:button.icon-btn {:title "Undo (Ctrl-Z)" :onClick undo!} [:i.ti.ti-arrow-back-up]]
      [:button.icon-btn {:title "Redo (Ctrl-Y)" :onClick redo!} [:i.ti.ti-arrow-forward-up]]
      [:div.toolbar-divider]
@@ -1541,7 +1613,9 @@
      [hamburger-menu])
    (when (:palette-open @app)
      [style-panel])
-   [toolbar]])
+   [contextual-toolbar]
+   [tools-toolbar]
+   [rhs-toolbar]])
 
 ;; ---------------------------------------------------------------------------
 ;; Keyboard & init
@@ -1557,6 +1631,10 @@
           (and ctrl (= k "y")) (do (.preventDefault e) (redo!))
           (and ctrl (= k "d")) (do (.preventDefault e) (duplicate!))
           (and ctrl (= k "l")) (do (.preventDefault e) (simplify-selection!))
+          (and (not ctrl) (= k "[")) (do (.preventDefault e) (if (.-shiftKey e) (send-to-back!) (send-backward!)))
+          (and (not ctrl) (= k "]")) (do (.preventDefault e) (if (.-shiftKey e) (bring-to-front!) (bring-forward!)))
+          (and ctrl (= k "[")) (do (.preventDefault e) (if (.-shiftKey e) (send-to-back!) (send-backward!)))
+          (and ctrl (= k "]")) (do (.preventDefault e) (if (.-shiftKey e) (bring-to-front!) (bring-forward!)))
           (contains? #{"Delete" "Backspace"} k) (do (.preventDefault e) (delete-selection!))
           (= k "Escape") (swap! app assoc :selection #{} :edit-id nil)
           (= k "v") (swap! app assoc :tool :select)

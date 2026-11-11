@@ -2,14 +2,8 @@
 
 ## TODO
 
-- [ ] Fixing the UI to accomodate multiple tools.
-  - [ ] Put pan, zoom, undo, redo, and palette into a separate toolbar pill on the RHS.
-  - [ ] Put pan and zoom together into a pop-up pill.
-  - [ ] Left align the other toolbar with draw, erase, fill, select.
-  - [ ] Put delete, duplicate, and z-order in new contextual toolbar.
-        which appears just above the current one when shapes are selected.
+- [ ] Why is the flood fill implementation in index.html?
 - [ ] Make it home-screen installable (ref `single-file-pwa.html`).
-- [ ] Shape z-order editing (back/forward, send-to-back/front) UI.
 
 ## Next / Later
 
@@ -24,6 +18,12 @@
 
 ## Done
 
+- [x] Fixing the UI to accomodate multiple tools.
+  - [x] Put pan, zoom, undo, redo, and palette into a separate toolbar pill on the RHS.
+  - [x] Put pan and zoom together into a pop-up pill.
+  - [x] Left align the other toolbar with draw, erase, fill, select.
+  - [x] Put delete, duplicate, and z-order in new contextual toolbar which appears just above the current one when shapes are selected.
+- [x] Shape z-order editing (back/forward, send-to-back/front) UI with keyboard shortcuts ([ and ]).
 - [x] Move delete/duplicate buttons under a vertical dots icon that pops up.
 - [x] Put undo and redo into the bottom toolbar just to the right of the magnifying glass.
 - [x] Put delete/duplicate actions from top bar to bottom, to the left of undo/redo.

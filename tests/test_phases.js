@@ -197,24 +197,21 @@ const expectTool = (page, title) =>
     assert(!(await page.$('.zoom-popout')), 'zoom backdrop click should dismiss popout');
     pass('Toolbar zoom popout (zoom in, zoom out, reset, backdrop dismiss)');
 
-    // ---------------- Toolbar: actions popout --------------------------------
+    // ---------------- Contextual toolbar: selection actions ------------------
     await drawTool(page);
     await drawStroke(page, [[400, 300], [600, 300]]);
     await selectShape(page, 500, 300);
     const countBeforeActions = await shapeCount(page);
 
-    await page.click('.actions-toggle-btn');
-    await page.waitForSelector('.actions-popout');
-    await page.click('.actions-popout button[title="Duplicate (Ctrl-D)"]');
+    await page.waitForSelector('.contextual-toolbar');
+    await page.click('.contextual-toolbar button[title="Duplicate (Ctrl-D)"]');
     await page.waitForTimeout(150);
-    assert((await shapeCount(page)) === countBeforeActions + 1, 'Actions menu duplicate should duplicate shape');
+    assert((await shapeCount(page)) === countBeforeActions + 1, 'Contextual duplicate should duplicate shape');
 
-    await page.click('.actions-toggle-btn');
-    await page.waitForSelector('.actions-popout');
-    await page.click('.actions-popout button[title="Delete (Del)"]');
+    await page.click('.contextual-toolbar button[title="Delete (Del)"]');
     await page.waitForTimeout(150);
-    assert((await shapeCount(page)) === countBeforeActions, 'Actions menu delete should delete selection');
-    pass('Toolbar actions popout (duplicate button, delete button)');
+    assert((await shapeCount(page)) === countBeforeActions, 'Contextual delete should delete selection');
+    pass('Toolbar contextual selection actions (duplicate button, delete button)');
 
     // ---------------- Toolbar: keyboard tool shortcuts -----------------------
     await page.keyboard.press('v');
@@ -510,6 +507,9 @@ const expectTool = (page, title) =>
     pass('Phase 5 page switching restores shapes');
 
     console.log('\nALL E2E TESTS PASSED');
+  } catch (err) {
+    console.error('TEST ERROR:', err.stack);
+    throw err;
   } finally {
     await browser.close();
     if (staticServer) staticServer.close();

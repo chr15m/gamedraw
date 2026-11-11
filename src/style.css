@@ -86,9 +86,10 @@ html, body, #app {
 }
 
 .icon-btn {
-  height: 30px;
-  min-width: 30px;
-  padding: 0 7px;
+  height: 32px;
+  width: 32px;
+  min-width: 32px;
+  padding: 0;
   border: none;
   border-radius: 6px;
   background: transparent;
@@ -387,7 +388,29 @@ html, body, #app {
 .toolbar {
   position: fixed;
   bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 4px 6px;
+  z-index: 20;
+}
+
+.tools-toolbar {
+  left: 12px;
+}
+
+.rhs-toolbar {
   right: 12px;
+}
+
+.contextual-toolbar {
+  position: fixed;
+  bottom: 58px;
+  left: 12px;
   display: flex;
   align-items: center;
   gap: 3px;
@@ -407,28 +430,28 @@ html, body, #app {
 }
 
 .palette-toggle-btn {
-  height: 36px;
-  min-width: 36px;
-  padding: 0 8px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0 6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 4px;
   background: transparent;
   color: var(--text);
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: pointer;
 }
-.palette-toggle-btn .ti { font-size: 19px; }
+.palette-toggle-btn .ti { font-size: 18px; }
 .palette-toggle-btn:hover { background: #f0eee6; }
 .palette-toggle-btn.active {
   background: var(--primary);
   color: #fff;
 }
 .palette-chip {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   border: 1px solid rgba(0, 0, 0, 0.25);
   display: inline-block;
@@ -439,11 +462,12 @@ html, body, #app {
 }
 
 .tool-btn {
-  height: 36px;
-  min-width: 42px;
-  padding: 0 8px;
+  height: 32px;
+  width: 32px;
+  min-width: 32px;
+  padding: 0;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   font-size: 12px;
   font-weight: 600;
@@ -453,7 +477,7 @@ html, body, #app {
   align-items: center;
   justify-content: center;
 }
-.tool-btn .ti { font-size: 19px; }
+.tool-btn .ti { font-size: 18px; }
 .tool-btn:hover { background: #f0eee6; }
 .tool-btn.active { background: var(--primary); color: #fff; }
 
@@ -465,17 +489,16 @@ html, body, #app {
   font-variant-numeric: tabular-nums;
 }
 
-.zoom-control-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
 .zoom-backdrop {
   position: fixed;
   inset: 0;
   z-index: 22;
   background: transparent;
+}
+
+.icon-btn.active-tool {
+  color: var(--primary);
+  background: rgba(68, 101, 233, 0.12);
 }
 
 .zoom-toggle-btn {
@@ -517,50 +540,9 @@ html, body, #app {
   color: var(--text);
 }
 
-.actions-control-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.actions-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 22;
-  background: transparent;
-}
-
-.actions-toggle-btn {
-  position: relative;
-  z-index: 24;
-}
-
-.actions-popout {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 6px;
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  z-index: 25;
-  white-space: nowrap;
-}
-
-@media (max-width: 640px), (pointer: coarse) {
-  .tool-pan-btn { display: none !important; }
-}
-
 @media (max-width: 560px) {
-  .tool-pan-btn { display: none !important; }
   .style-panel { width: 168px; padding: 8px; }
   .swatch { width: 24px; height: 24px; }
-  .tool-btn { min-width: 42px; padding: 0 6px; font-size: 11px; }
 }
 /* Pinterest Integration & Viewer Styles */
 .pin-toggle-btn,

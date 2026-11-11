@@ -248,6 +248,23 @@
   (let [{:keys [x y zoom]} (:viewport st)]
     {:x (/ (- cx x) zoom) :y (/ (- cy y) zoom)}))
 
+(defn screen-center []
+  {:x (/ (.-innerWidth js/window) 2.0)
+   :y (/ (.-innerHeight js/window) 2.0)})
+
+(defn current-center-world [st]
+  (let [sc (screen-center)]
+    (client->world st (:x sc) (:y sc))))
+
+(defn viewport-for-center [cw zoom]
+  (let [sc (screen-center)
+        z (or zoom 1.0)
+        cx (or (:x cw) 0.0)
+        cy (or (:y cw) 0.0)]
+    {:zoom z
+     :x (- (:x sc) (* cx z))
+     :y (- (:y sc) (* cy z))}))
+
 (defn coalesced [ne]
   (if (and ne (.-getCoalescedEvents ne))
     (let [evs (.getCoalescedEvents ne)]
@@ -1114,10 +1131,16 @@
     (reset! all-pages (vec (distinct (concat @all-pages [(:page @app)]))))))
 
 (defn save-page! []
-  (let [st @app]
+  (let [st @app
+        cw (current-center-world st)
+        zoom (get-in st [:viewport :zoom] 1.0)]
     (when (and (idb) (:page st))
       (-> (.set (idb) (str "sketchthing:" (:page st))
-                (clj->js {:shapes (:shapes st) :trace (:trace st) :palette (:palette st)}))
+                (clj->js {:shapes (:shapes st)
+                          :trace (:trace st)
+                          :palette (:palette st)
+                          :view {:center [(:x cw) (:y cw)]
+                                 :zoom zoom}}))
           (.catch (fn [e] (js/console.error "save failed" e)))))))
 
 (defn schedule-save! []
@@ -1131,11 +1154,13 @@
 (defn load-page! [date]
   (cancel-save!)
   (swap! all-pages (fn [ps] (vec (sort (distinct (conj (or ps []) date))))))
-  (swap! app (fn [a] (-> a
-                         (assoc :page date :drawing [] :eraser [])
-                         (assoc :shapes []) (assoc :trace nil)
-                         (assoc :selection #{} :edit-id nil)
-                         (assoc :history [] :future []))))
+  (let [def-vp (viewport-for-center {:x 0.0 :y 0.0} 1.0)]
+    (swap! app (fn [a] (-> a
+                           (assoc :page date :drawing [] :eraser [])
+                           (assoc :shapes []) (assoc :trace nil)
+                           (assoc :selection #{} :edit-id nil)
+                           (assoc :history [] :future [])
+                           (assoc :viewport def-vp)))))
   ;; Clearing :shapes above queues a debounced save; cancel it so an empty
   ;; canvas can never overwrite the page we're about to load.
   (cancel-save!)
@@ -1143,11 +1168,21 @@
     (-> (.get (idb) (str "sketchthing:" date))
         (.then (fn [data]
                  (when (and data (= (:page @app) date))
-                   (let [d (js->clj data :keywordize-keys true)]
+                   (let [d (js->clj data :keywordize-keys true)
+                         view (:view d)
+                         vp (cond
+                              (and view (:center view))
+                              (let [[cx cy] (:center view)
+                                    z (:zoom view 1.0)]
+                                (viewport-for-center {:x cx :y cy} z))
+                              (:viewport d)
+                              (:viewport d)
+                              :else nil)]
                      (swap! app (fn [a]
                                   (cond-> (-> a
                                               (assoc :shapes (vec (:shapes d)))
                                               (assoc :trace (:trace d)))
+                                    vp (assoc :viewport vp)
                                     (:palette d) (assoc :palette (:palette d)))))))))
         (.catch (fn [e] (js/console.error "load-page error:" e)))))
   (refresh-pages!))
@@ -1387,9 +1422,13 @@
         (swap! app assoc :page new-n))
       (swap! all-pages (fn [ps] (vec (sort (distinct (map #(if (= % old-n) new-n %) ps))))))
       (when (idb)
-        (let [d (clj->js {:shapes (:shapes @app)
+        (let [cw (current-center-world @app)
+              zoom (get-in @app [:viewport :zoom] 1.0)
+              d (clj->js {:shapes (:shapes @app)
                           :trace (:trace @app)
-                          :palette (:palette @app)})]
+                          :palette (:palette @app)
+                          :view {:center [(:x cw) (:y cw)]
+                                 :zoom zoom}})]
           (-> (.set (idb) (str "sketchthing:" new-n) d)
               (.then (fn [_] (.del (idb) (str "sketchthing:" old-n))))
               (.then (fn [_] (refresh-pages!)))
@@ -1689,7 +1728,8 @@
              (fn [_ _ old new]
                (when (or (not= (:shapes old) (:shapes new))
                          (not= (:trace old) (:trace new))
-                         (not= (:palette old) (:palette new)))
+                         (not= (:palette old) (:palette new))
+                         (not= (:viewport old) (:viewport new)))
                  (schedule-save!))))
   (load-page! (:page @app))
   (refresh-pages!))

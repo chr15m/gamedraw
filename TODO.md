@@ -2,11 +2,9 @@
 
 ## TODO
 
-- [x] Vector flood fill: interior fills inside shapes, cancel and set page background if click is outside or hits bounding box of shapes.
-  - [x] Bug: fill not touching the sides of the shape and filling over interior cutouts.
-  - [x] Bug: two-finger zoom/pan with fill tool causes a fill to start when it should not.
-- [x] New toggle for straight vs bezier path rendering in the palette/line editing UI.
 - [ ] Shape z-order editing (back/forward, send-to-back/front) UI.
+- [ ] Make it home-screen installable (ref `single-file-pwa.html`).
+- [ ] Fixing the UI to accomodate multiple tools.
 
 ## Next / Later
 
@@ -34,6 +32,10 @@
 - [x] Order the tools: Draw, erase, select.
 - [x] Remove the word 'Canvas' from the pin board close button.
 
+- [x] Vector flood fill: interior fills inside shapes, cancel and set page background if click is outside or hits bounding box of shapes.
+  - [x] Bug: fill not touching the sides of the shape and filling over interior cutouts.
+  - [x] Bug: two-finger zoom/pan with fill tool causes a fill to start when it should not.
+- [x] New toggle for straight vs bezier path rendering in the palette/line editing UI.
 - [x] Put the 'pin UI' toggle to the right of the palette toggle.
 - [x] Implement a drag-rectangle-to-select UI for the pointer.
 - [x] Collapse the zoom UI into a single magnifying glass icon that pops out.

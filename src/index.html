@@ -35,13 +35,43 @@
   <script src="https://cdn.jsdelivr.net/npm/simplify-js@1.2.4/simplify.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js"></script>
   <script>
-    window.sketchFloodFill = function(u32, w, h, sx, sy, padX1, padX2, padY1, padY2, effectiveScale) {
+    window.sketchFloodFill = function(u32, w, h, sx, sy, padX1, padX2, padY1, padY2, effectiveScale, fillR, fillG, fillB) {
+      if (sx < 0 || sy < 0 || sx >= w || sy >= h) {
+        return { hitBoundary: true };
+      }
+      var seedIdx = sy * w + sx;
+      var seedVal = u32[seedIdx];
+      var seedA = (seedVal >> 24) & 0xff;
+      var seedR = seedVal & 0xff;
+      var seedG = (seedVal >> 8) & 0xff;
+      var seedB = (seedVal >> 16) & 0xff;
+
+      var isTransparent = seedA < 20;
+
+      // If seed color matches the selected fill color, do nothing
+      if (!isTransparent && fillR !== undefined) {
+        var diff = Math.abs(seedR - fillR) + Math.abs(seedG - fillG) + Math.abs(seedB - fillB);
+        if (diff < 15) {
+          return { sameColor: true };
+        }
+      }
+
       var mask = new Uint8Array(w * h);
       var isPassable = function(x, y) {
         if (x < 0 || y < 0 || x >= w || y >= h) return false;
         var idx = y * w + x;
         if (mask[idx] === 1) return false;
-        return (u32[idx] & 0xff) > 180;
+        var val = u32[idx];
+        var a = (val >> 24) & 0xff;
+        if (isTransparent) {
+          return a < 20;
+        } else {
+          if (a < 20) return false;
+          var r = val & 0xff;
+          var g = (val >> 8) & 0xff;
+          var b = (val >> 16) & 0xff;
+          return (Math.abs(r - seedR) + Math.abs(g - seedG) + Math.abs(b - seedB)) < 40;
+        }
       };
 
       if (!isPassable(sx, sy)) {
@@ -99,7 +129,7 @@
         }
       }
 
-      // Stroke-masked dilation to tuck cleanly under boundary strokes without bleeding into open canvas
+      // Dilation to tuck cleanly under boundary strokes without bleeding into open canvas
       var passes = Math.max(1, Math.min(6, Math.round(1.3 * (effectiveScale || 1.0))));
       var curMask = mask;
       for (var p = 0; p < passes; p++) {
@@ -111,7 +141,7 @@
               var nbs = [cidx - w, cidx + w, cidx - 1, cidx + 1];
               for (var ni = 0; ni < 4; ni++) {
                 var nidx = nbs[ni];
-                if (curMask[nidx] === 0 && (u32[nidx] & 0xff) < 225) {
+                if (curMask[nidx] === 0 && ((u32[nidx] >> 24) & 0xff) >= 20) {
                   nextMask[nidx] = 1;
                 }
               }
@@ -232,7 +262,7 @@
         }
       }
 
-      return { hitBoundary: false, contour: outerContour, holes: holes };
+      return { hitBoundary: false, contour: outerContour, holes: holes, isTransparent: isTransparent };
     };
   </script>
 </head>

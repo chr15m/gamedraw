@@ -434,14 +434,49 @@
        :y2 (+ (apply max (map :y pts)) hw)})))
 
 (defn shapes-overall-bbox [shapes]
-  (let [bs (keep shape-stroke-bbox (filter #(and (:stroke %) (not= (:stroke %) "none")) shapes))]
+  (let [bs (keep (fn [s]
+                   (if (and (:stroke s) (not= (:stroke s) "none") (not= (:stroke s) "transparent"))
+                     (shape-stroke-bbox s)
+                     (shape-bbox s)))
+                 shapes)]
     (when (seq bs)
       {:x1 (apply min (map :x1 bs))
        :y1 (apply min (map :y1 bs))
        :x2 (apply max (map :x2 bs))
        :y2 (apply max (map :y2 bs))})))
 
-(defn perform-flood-fill [shapes bbox w]
+(defn hex->rgb [hex]
+  (let [h (if (str/starts-with? (str hex) "#") (subs (str hex) 1) (str hex))]
+    (cond
+      (= (count h) 3)
+      (let [r (js/parseInt (str (nth h 0) (nth h 0)) 16)
+            g (js/parseInt (str (nth h 1) (nth h 1)) 16)
+            b (js/parseInt (str (nth h 2) (nth h 2)) 16)]
+        [r g b])
+      (= (count h) 6)
+      (let [r (js/parseInt (subs h 0 2) 16)
+            g (js/parseInt (subs h 2 4) 16)
+            b (js/parseInt (subs h 4 6) 16)]
+        [r g b])
+      :else [0 0 0])))
+
+(defn draw-subpath-ctx! [ctx pts closed? curve]
+  (let [n (count pts)]
+    (when (pos? n)
+      (.moveTo ctx (:x (first pts)) (:y (first pts)))
+      (dotimes [i (dec n)]
+        (let [idx (inc i)
+              p (nth pts idx)]
+          (if (= curve :straight)
+            (.lineTo ctx (:x p) (:y p))
+            (if (< idx (dec n))
+              (let [m (mid p (nth pts (inc idx)))]
+                (.quadraticCurveTo ctx (:x p) (:y p) (:x m) (:y m)))
+              (.lineTo ctx (:x p) (:y p))))))
+      (when closed?
+        (.closePath ctx)))))
+
+(defn perform-flood-fill [shapes bbox w fill-color]
   (let [bbox-pad 6.0
         bx1 (- (:x1 bbox) bbox-pad)
         by1 (- (:y1 bbox) bbox-pad)
@@ -459,16 +494,21 @@
             ctx (.getContext canvas "2d")]
         (set! (.-width canvas) cw)
         (set! (.-height canvas) ch)
-        (set! (.-fillStyle ctx) "#ffffff")
-        (.fillRect ctx 0 0 cw ch)
         (.save ctx)
         (.scale ctx effective-scale effective-scale)
         (.translate ctx (- bx1) (- by1))
         (doseq [s shapes]
-          (when (and (:stroke s) (not= (:stroke s) "none"))
-            (let [pts (:points s)]
-              (when (seq pts)
-                (set! (.-strokeStyle ctx) "#000000")
+          (let [pts (:points s)]
+            (when (seq pts)
+              (when (and (:fill s) (not= (:fill s) "none") (not= (:fill s) "transparent") (:is-closed s))
+                (set! (.-fillStyle ctx) (:fill s))
+                (.beginPath ctx)
+                (draw-subpath-ctx! ctx pts true (:curve s))
+                (doseq [h (:holes s)]
+                  (draw-subpath-ctx! ctx h true (:curve s)))
+                (.fill ctx "evenodd"))
+              (when (and (:stroke s) (not= (:stroke s) "none") (not= (:stroke s) "transparent"))
+                (set! (.-strokeStyle ctx) (:stroke s))
                 (set! (.-lineWidth ctx) (or (:stroke-width s) 3.5))
                 (set! (.-lineCap ctx) "round")
                 (set! (.-lineJoin ctx) "round")
@@ -476,22 +516,11 @@
                 (if (= 1 (count pts))
                   (let [p (first pts)
                         r (/ (or (:stroke-width s) 3.5) 2.0)]
-                    (set! (.-fillStyle ctx) "#000000")
+                    (set! (.-fillStyle ctx) (:stroke s))
                     (.arc ctx (:x p) (:y p) r 0 (* 2 js/Math.PI))
                     (.fill ctx))
-                  (let [n (count pts)]
-                    (.moveTo ctx (:x (first pts)) (:y (first pts)))
-                    (dotimes [i (dec n)]
-                      (let [idx (inc i)
-                            p (nth pts idx)]
-                        (if (= (:curve s) :straight)
-                          (.lineTo ctx (:x p) (:y p))
-                          (if (< idx (dec n))
-                            (let [m (mid p (nth pts (inc idx)))]
-                              (.quadraticCurveTo ctx (:x p) (:y p) (:x m) (:y m)))
-                            (.lineTo ctx (:x p) (:y p))))))
-                    (when (:is-closed s)
-                      (.closePath ctx))
+                  (do
+                    (draw-subpath-ctx! ctx pts (:is-closed s) (:curve s))
                     (.stroke ctx)))))))
         (.restore ctx)
         (let [sx (js/Math.round (* (- (:x w) bx1) effective-scale))
@@ -504,15 +533,18 @@
                   pad-x2 (js/Math.ceil (- cw (* bbox-pad effective-scale)))
                   pad-y1 (js/Math.floor (* bbox-pad effective-scale))
                   pad-y2 (js/Math.ceil (- ch (* bbox-pad effective-scale)))
+                  [fr fg fb] (hex->rgb fill-color)
                   fill-fn (or (.-sketchFloodFill js/window)
-                              (fn [_ _ _ _ _ _ _ _ _ _] #js {:hitBoundary true}))
-                  res (fill-fn u32 cw ch sx sy pad-x1 pad-x2 pad-y1 pad-y2 effective-scale)]
+                              (fn [_ _ _ _ _ _ _ _ _ _ _ _ _] #js {:hitBoundary true}))
+                  res (fill-fn u32 cw ch sx sy pad-x1 pad-x2 pad-y1 pad-y2 effective-scale fr fg fb)]
               (cond
+                (.-sameColor res) {:same-color? true}
                 (.-onObstacle res) {:on-obstacle? true}
                 (.-hitBoundary res) {:hit-boundary? true}
                 :else
                 (let [raw (.-contour res)
                       raw-holes (.-holes res)
+                      is-trans? (.-isTransparent res)
                       to-world (fn [pts-arr]
                                  (mapv (fn [p]
                                          {:x (+ bx1 (/ (.-x p) effective-scale))
@@ -531,7 +563,7 @@
                                                    (when (> (count sp) 2) sp))))
                                              (array-seq raw-holes))))]
                       (if (> (count outer-pts) 2)
-                        {:points outer-pts :holes (or holes [])}
+                        {:points outer-pts :holes (or holes []) :transparent? is-trans?}
                         {:hit-boundary? false}))
                     {:hit-boundary? false}))))))))))
 
@@ -547,8 +579,11 @@
       (set-bg! fill-color)
 
       :else
-      (let [result (perform-flood-fill shapes bbox w)]
+      (let [result (perform-flood-fill shapes bbox w fill-color)]
         (cond
+          (:same-color? result)
+          nil
+
           (:hit-boundary? result)
           (set-bg! fill-color)
 
@@ -563,9 +598,17 @@
                            :stroke-width 0
                            :fill fill-color
                            :curve :straight
-                           :is-closed true}]
+                           :is-closed true}
+                is-trans? (:transparent? result)
+                hit-idx (when-not is-trans?
+                          (last (keep-indexed (fn [i s] (when (hit-shape? s w 1.0) i)) shapes)))]
             (history-push!)
-            (swap! app update :shapes #(into [new-shape] %)))
+            (swap! app update :shapes
+                   (fn [ss]
+                     (if (and hit-idx (< hit-idx (count ss)))
+                       (let [idx (inc hit-idx)]
+                         (vec (concat (subvec ss 0 idx) [new-shape] (subvec ss idx))))
+                       (into [new-shape] ss)))))
 
           :else nil)))))
 

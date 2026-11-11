@@ -177,6 +177,38 @@ function startStaticServer() {
   console.log('Shapes before pinch:', shapeCountBeforePinch, 'after pinch:', shapeCountAfterPinch);
   console.log('Pinch did NOT trigger accidental fill:', shapeCountBeforePinch === shapeCountAfterPinch);
 
+  console.log('\n--- TEST 4: Re-coloring existing fill & same-color no-op ---');
+  // Open palette and pick blue swatch #4b80ca
+  if (!(await page.$('.style-panel'))) {
+    await page.locator('.palette-toggle-btn').click();
+    await page.waitForTimeout(100);
+  }
+  await page.click('.swatch[title="#4b80ca"]');
+  await page.waitForTimeout(100);
+
+  // Tap again in the donut ring (which is currently dark #212123)
+  const countBeforeRecolor = await page.evaluate(() => scittle.core.eval_string('(count (:shapes @main/app))'));
+  await canvas.dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'touch', clientX: cx + 80, clientY: cy, button: 0 });
+  await page.waitForTimeout(50);
+  await canvas.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'touch', clientX: cx + 80, clientY: cy, button: 0 });
+  await page.waitForTimeout(400);
+
+  const countAfterRecolor = await page.evaluate(() => scittle.core.eval_string('(count (:shapes @main/app))'));
+  console.log('Shapes count before vs after recolor:', countBeforeRecolor, 'vs', countAfterRecolor);
+
+  const latestFillColor = await page.evaluate(() => scittle.core.eval_string('(:fill (last (filter #(and (:fill %) (not= (:fill %) "none")) (:shapes @main/app))))'));
+  console.log('Latest fill shape color:', latestFillColor);
+
+  // Now tap again with the SAME color (#4b80ca)
+  await canvas.dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'touch', clientX: cx + 80, clientY: cy, button: 0 });
+  await page.waitForTimeout(50);
+  await canvas.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'touch', clientX: cx + 80, clientY: cy, button: 0 });
+  await page.waitForTimeout(300);
+
+  const countAfterSameColor = await page.evaluate(() => scittle.core.eval_string('(count (:shapes @main/app))'));
+  console.log('Shapes count after tapping with same color (should not change):', countAfterSameColor);
+  console.log('Same-color tap was no-op:', countAfterRecolor === countAfterSameColor);
+
   await browser.close();
   s.server.close();
   console.log('\nALL CHECKS COMPLETED SUCCESSFULLY!');

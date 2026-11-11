@@ -1,0 +1,230 @@
+// Vector flood fill raster traversal and contour tracing engine
+window.sketchFloodFill = function(u32, w, h, sx, sy, padX1, padX2, padY1, padY2, effectiveScale, fillR, fillG, fillB) {
+  if (sx < 0 || sy < 0 || sx >= w || sy >= h) {
+    return { hitBoundary: true };
+  }
+  var seedIdx = sy * w + sx;
+  var seedVal = u32[seedIdx];
+  var seedA = (seedVal >> 24) & 0xff;
+  var seedR = seedVal & 0xff;
+  var seedG = (seedVal >> 8) & 0xff;
+  var seedB = (seedVal >> 16) & 0xff;
+
+  var isTransparent = seedA < 20;
+
+  // If seed color matches the selected fill color, do nothing
+  if (!isTransparent && fillR !== undefined) {
+    var diff = Math.abs(seedR - fillR) + Math.abs(seedG - fillG) + Math.abs(seedB - fillB);
+    if (diff < 15) {
+      return { sameColor: true };
+    }
+  }
+
+  var mask = new Uint8Array(w * h);
+  var isPassable = function(x, y) {
+    if (x < 0 || y < 0 || x >= w || y >= h) return false;
+    var idx = y * w + x;
+    if (mask[idx] === 1) return false;
+    var val = u32[idx];
+    var a = (val >> 24) & 0xff;
+    if (isTransparent) {
+      return a < 20;
+    } else {
+      if (a < 20) return false;
+      var r = val & 0xff;
+      var g = (val >> 8) & 0xff;
+      var b = (val >> 16) & 0xff;
+      return (Math.abs(r - seedR) + Math.abs(g - seedG) + Math.abs(b - seedB)) < 40;
+    }
+  };
+
+  if (!isPassable(sx, sy)) {
+    return { onObstacle: true };
+  }
+
+  var stack = new Int32Array(2048);
+  var sp = 0;
+  var push = function(x, y) {
+    if (sp + 2 > stack.length) {
+      var bigger = new Int32Array(stack.length * 2);
+      bigger.set(stack);
+      stack = bigger;
+    }
+    stack[sp++] = x;
+    stack[sp++] = y;
+  };
+
+  push(sx, sy);
+  var hitBoundary = false;
+
+  while (sp > 0) {
+    var y = stack[--sp];
+    var x = stack[--sp];
+
+    while (x >= 0 && isPassable(x, y)) x--;
+    x++;
+
+    if (x <= padX1) hitBoundary = true;
+    if (y <= padY1 || y >= padY2) hitBoundary = true;
+
+    var spanAbove = false;
+    var spanBelow = false;
+
+    while (x < w && isPassable(x, y)) {
+      mask[y * w + x] = 1;
+
+      if (x >= padX2) hitBoundary = true;
+
+      if (y > 0) {
+        var ma = isPassable(x, y - 1);
+        if (!spanAbove && ma) { push(x, y - 1); spanAbove = true; }
+        else if (spanAbove && !ma) spanAbove = false;
+      }
+      if (y < h - 1) {
+        var mb = isPassable(x, y + 1);
+        if (!spanBelow && mb) { push(x, y + 1); spanBelow = true; }
+        else if (spanBelow && !mb) spanBelow = false;
+      }
+      x++;
+    }
+
+    if (hitBoundary) {
+      return { hitBoundary: true };
+    }
+  }
+
+  // Dilation to tuck cleanly under boundary strokes without bleeding into open canvas
+  var passes = Math.max(1, Math.min(6, Math.round(1.3 * (effectiveScale || 1.0))));
+  var curMask = mask;
+  for (var p = 0; p < passes; p++) {
+    var nextMask = new Uint8Array(curMask);
+    for (var dy = 1; dy < h - 1; dy++) {
+      for (var dx = 1; dx < w - 1; dx++) {
+        var cidx = dy * w + dx;
+        if (curMask[cidx] === 1) {
+          var nbs = [cidx - w, cidx + w, cidx - 1, cidx + 1];
+          for (var ni = 0; ni < 4; ni++) {
+            var nidx = nbs[ni];
+            if (curMask[nidx] === 0 && ((u32[nidx] >> 24) & 0xff) >= 20) {
+              nextMask[nidx] = 1;
+            }
+          }
+        }
+      }
+    }
+    curMask = nextMask;
+  }
+  mask = curMask;
+
+  // Flood-fill exterior 0s from (0,0) with value 2
+  var queue = [0, 0];
+  mask[0] = 2;
+  var qHead = 0;
+  while (qHead < queue.length) {
+    var qx = queue[qHead++];
+    var qy = queue[qHead++];
+    var nbs = [[qx + 1, qy], [qx - 1, qy], [qx, qy + 1], [qx, qy - 1]];
+    for (var bi = 0; bi < 4; bi++) {
+      var nbx = nbs[bi][0], nby = nbs[bi][1];
+      if (nbx >= 0 && nbx < w && nby >= 0 && nby < h) {
+        var nidx = nby * w + nbx;
+        if (mask[nidx] === 0) {
+          mask[nidx] = 2;
+          queue.push(nbx, nby);
+        }
+      }
+    }
+  }
+
+  // Direction vectors (8 neighbors clockwise starting from West)
+  var dirX = [-1, -1,  0,  1, 1, 1, 0, -1];
+  var dirY = [ 0, -1, -1, -1, 0, 1, 1,  1];
+  var traceContour = function(startX, startY, targetVal, neighborVal) {
+    var getM = function(cx, cy) {
+      return (cx >= 0 && cy >= 0 && cx < w && cy < h) ? mask[cy * w + cx] : neighborVal;
+    };
+    var contour = [{ x: startX, y: startY }];
+    var cx = startX, cy = startY;
+    var backDir = 0;
+    var firstDir = -1;
+    var maxSteps = w * h * 4;
+
+    for (var step = 0; step < maxSteps; step++) {
+      var found = false;
+      for (var i = 1; i <= 8; i++) {
+        var d = (backDir + i) % 8;
+        var nx = cx + dirX[d], ny = cy + dirY[d];
+        if (getM(nx, ny) === targetVal) {
+          if (cx === startX && cy === startY && firstDir === d) {
+            return contour;
+          }
+          if (firstDir < 0) firstDir = d;
+
+          var prev = (d + 7) % 8;
+          var px = cx + dirX[prev], py = cy + dirY[prev];
+          var ddx = px - nx, ddy = py - ny;
+          var ndir = 0;
+          for (var k = 0; k < 8; k++) {
+            if (dirX[k] === ddx && dirY[k] === ddy) { ndir = k; break; }
+          }
+          backDir = ndir;
+          cx = nx; cy = ny;
+          contour.push({ x: cx, y: cy });
+          found = true;
+          break;
+        }
+      }
+      if (!found) break;
+    }
+    return contour;
+  };
+
+  // Trace outer contour (first pixel of 1)
+  var outerContour = null;
+  outerLoop: for (var my = 0; my < h; my++) {
+    for (var mx = 0; mx < w; mx++) {
+      if (mask[my * w + mx] === 1) {
+        outerContour = traceContour(mx, my, 1, 2);
+        break outerLoop;
+      }
+    }
+  }
+  if (!outerContour || outerContour.length < 3) {
+    return { hitBoundary: false, contour: [] };
+  }
+
+  // Trace interior holes (0s surrounded by 1s)
+  var holes = [];
+  var visitedHoles = new Uint8Array(w * h);
+  for (var hy = 0; hy < h; hy++) {
+    for (var hx = 0; hx < w; hx++) {
+      var hIdx = hy * w + hx;
+      if (mask[hIdx] === 0 && visitedHoles[hIdx] === 0) {
+        var holeTrace = traceContour(hx, hy, 0, 1);
+        if (holeTrace && holeTrace.length >= 3) {
+          holes.push(holeTrace);
+        }
+        var hq = [hx, hy];
+        visitedHoles[hIdx] = 1;
+        var hHead = 0;
+        while (hHead < hq.length) {
+          var px = hq[hHead++];
+          var py = hq[hHead++];
+          var hNbs = [[px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1]];
+          for (var hi = 0; hi < 4; hi++) {
+            var nx = hNbs[hi][0], ny = hNbs[hi][1];
+            if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+              var nIdx = ny * w + nx;
+              if (mask[nIdx] === 0 && visitedHoles[nIdx] === 0) {
+                visitedHoles[nIdx] = 1;
+                hq.push(nx, ny);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return { hitBoundary: false, contour: outerContour, holes: holes, isTransparent: isTransparent };
+};

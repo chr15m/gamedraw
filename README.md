@@ -69,6 +69,7 @@ simplify-js, idb-keyval) and has no server component.
 | File | Purpose |
 | --- | --- |
 | `src/index.html` | App shell; loads CDN deps and the Scittle sources. |
+| `src/flood-fill.js` | Vector flood fill scanline raster traversal and contour tracing. |
 | `src/main.cljs` | Whole application: state, geometry, events, components. |
 | `src/pinterest.cljs` | Pinterest reference viewer (renders into `#pinterest-root`). |
 | `src/style.css` | UI styling. |
